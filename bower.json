@@ -15,7 +15,8 @@
     "purescript-console": "^0.1.0",
     "purescript-generics": "~0.7.2",
     "purescript-node-fs-aff": "^0.2.1",
-    "purescript-parsing": "~0.7.2"
+    "purescript-parsing": "~0.7.2",
+    "purescript-yargs": "~0.7.2"
   },
   "devDependencies": {
     "purescript-spec": "~0.7.2"

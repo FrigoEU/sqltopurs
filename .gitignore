@@ -4,3 +4,6 @@
 /output/
 /.psci*
 /src/.webpack.js
+sqltopurs.js
+test.sql
+test.purs

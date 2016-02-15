@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "yargs": "^4.1.0"
+  },
+  "scripts": {
+    "build": "pulp build && npm run compile",
+    "compile": "psc-bundle output/**/{index,foreign}.js --main Main --module Main --output sqltopurs.js"
+  }
+}

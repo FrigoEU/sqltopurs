@@ -11,7 +11,8 @@ moduleDecl :: String
 moduleDecl = joinWith "\n" [ "module MyApp.SQL where"
                            , "import Database.AnyDB (Connection, DB)"
                            , "import Data.Array (Array)"
-                           , "import Control.Monad.Aff (Aff)"]
+                           , "import Control.Monad.Aff (Aff)"
+                           , "import Unsafe.Coerce (unsafeCoerce)"]
 
 full :: forall f. (Foldable f) => f SQLFunc -> String
 full fs = moduleDecl <> "\n" <> foldMap (\s -> typeDecl s <> "\n" <> funcDef s <> "\n") fs
@@ -55,7 +56,7 @@ funcDef (SQLFunc {name, vars, set}) =
              else "")
       <> " = query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\" "
       <> "[" <> joinWith ", " (L.toUnfoldable $ (\v -> "toSql " <> getName v) <$> invars) <> "]"
-      <> " conn"
+      <> " conn >>= unsafeCoerce"
 
 getName :: Var -> String
 getName (In name _) = name

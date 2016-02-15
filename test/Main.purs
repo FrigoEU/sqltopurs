@@ -51,4 +51,4 @@ codegentest = describe "codegen" do
     shouldEqual (typeDecl f) ("myfunc :: forall eff. Connection -> {myinvar :: Boolean} -> Aff (db :: DB | eff) (Array {myvar :: Number})")
   it "should generate a function definition" do
     let f = SQLFunc {name: "myfunc", vars: Cons (In "myinvar" Boolean) (Cons (Out "myvar" Numeric) (Cons (In "myinvar2" Int) Nil)), set: true}
-    shouldEqual (funcDef f) ("myfunc conn {myinvar, myinvar2} = query \"select * from myfunc(?,?)\" [toSql myinvar, toSql myinvar2] conn")
+    shouldEqual (funcDef f) ("myfunc conn {myinvar, myinvar2} = query \"select * from myfunc(?,?)\" [toSql myinvar, toSql myinvar2] conn >>= unsafeCoerce")
