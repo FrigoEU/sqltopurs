@@ -1,5 +1,6 @@
 {
   "name": "sqltopurs",
+  "description": "CLI to make purescript function definitions using purescript-any-db from (Postgres) SQL function creation statements",
   "version": "1.0.0",
   "moduleType": [
     "node"
