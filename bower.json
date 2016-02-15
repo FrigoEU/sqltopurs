@@ -15,5 +15,12 @@
     "purescript-generics": "~0.7.2",
     "purescript-node-fs-aff": "^0.2.1",
     "purescript-parsing": "~0.7.2"
+  },
+  "devDependencies": {
+    "purescript-spec": "~0.7.2"
+  },
+  "resolutions": {
+    "purescript-aff": "~0.13.1",
+    "purescript-transformers": "^0.8.1"
   }
 }
