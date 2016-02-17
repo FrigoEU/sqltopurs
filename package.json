@@ -1,6 +1,10 @@
 {
   "name": "sqltopurs",
+  "version": "0.0.1",
   "author": "Simon Van Casteren",
+  "bin": {
+    "sqltopurs": "index.js"
+  },
   "dependencies": {
     "yargs": "^4.1.0"
   },
