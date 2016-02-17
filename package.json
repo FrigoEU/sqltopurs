@@ -1,4 +1,6 @@
 {
+  "name": "sqltopurs",
+  "author": "Simon Van Casteren",
   "dependencies": {
     "yargs": "^4.1.0"
   },
