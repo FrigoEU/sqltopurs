@@ -1,6 +1,6 @@
 {
   "name": "sqltopurs",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "author": "Simon Van Casteren",
   "bin": {
     "sqltopurs": "index.js"
@@ -16,6 +16,8 @@
   },
   "scripts": {
     "build": "pulp build && npm run compile",
-    "compile": "psc-bundle output/**/{index,foreign}.js --main Main --module Main --output sqltopurs.js"
+    "compile": "psc-bundle output/**/{index,foreign}.js --main Main --module Main --output sqltopurs.js",
+    "test": "pulp test",
+    "e2e": "npm run build && node sqltopurs.js -i test.sql -e extra.purs -o test.purs"
   }
 }

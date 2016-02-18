@@ -1,3 +1,11 @@
+create table students (
+  id uuid,
+  firstName text,
+  lastName text,
+  email text,
+  phone text
+)
+
 CREATE FUNCTION myfunc (IN myinvar boolean, OUT myvar numeric(2,2))
 RETURNS SETOF record
 AS $$

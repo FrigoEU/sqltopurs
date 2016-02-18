@@ -66,8 +66,7 @@ setP = isJust <$> optionMaybe ((string "RETURNS " <|> string "returns ")
                                *> (string "RECORD" <|> string "record"))
 
 createStatementP :: Parser String String
-createStatementP = (string "CREATE " <|> string "create ") 
-                   *> (string "FUNCTION " <|> string "function ")
+createStatementP = (string "CREATE FUNCTION " <|> string "create function ") 
 
 functionP :: Parser String SQLFunc
 functionP = do 
