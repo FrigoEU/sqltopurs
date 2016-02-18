@@ -4,7 +4,7 @@ import Prelude (class Eq, class Show, (==), (&&), show, (<>))
 import Data.Generic (class Generic, gShow, gEq)
 import Data.List (List)
 
-data Type = Int | Boolean | Numeric
+data Type = Int | Boolean | Numeric | UUID | Text
 data Var = In String Type
          | Out String Type
 data SQLFunc = SQLFunc {name :: String, vars :: List Var, set :: Boolean}

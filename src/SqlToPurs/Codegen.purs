@@ -1,21 +1,21 @@
 module SqlToPurs.Codegen where
 
 import Prelude (($), (<>), (<$>), (>), not)
-import SqlToPurs.Model (SQLFunc(SQLFunc), Type(Numeric, Boolean, Int), Var(Out, In))
+import SqlToPurs.Model (SQLFunc(SQLFunc), Type(UUID, Text, Numeric, Boolean, Int), Var(Out, In))
 import Data.String (joinWith)
 import Data.Array (replicate)
 import Data.List as L
 import Data.Foldable (class Foldable, foldMap)
 
-moduleDecl :: String
-moduleDecl = joinWith "\n" [ "module MyApp.SQL where"
+header :: String
+header = joinWith "\n" [ "module MyApp.SQL where"
                            , "import Database.AnyDB (Connection, DB)"
                            , "import Data.Array (Array)"
                            , "import Control.Monad.Aff (Aff)"
-                           , "import Unsafe.Coerce (unsafeCoerce)"]
+                           , "import Unsafe.Coerce (unsafeCoerce)" ]
 
 full :: forall f. (Foldable f) => f SQLFunc -> String
-full fs = moduleDecl <> "\n" <> foldMap (\s -> typeDecl s <> "\n" <> funcDef s <> "\n") fs
+full fs = foldMap (\s -> typeDecl s <> "\n" <> funcDef s <> "\n") fs
 
 typeDecl :: SQLFunc -> String
 typeDecl (SQLFunc {name, vars, set}) = 
@@ -44,6 +44,8 @@ typeToPurs :: Type -> String
 typeToPurs Int = "Int"
 typeToPurs Boolean = "Boolean"
 typeToPurs Numeric = "Number"
+typeToPurs Text = "String"
+typeToPurs UUID = "UUID"
 
 funcDef :: SQLFunc -> String
 funcDef (SQLFunc {name, vars, set}) = 

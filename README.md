@@ -29,3 +29,22 @@ import Control.Monad.Aff (Aff)
 myfunc :: forall eff. Connection -> {myinvar :: Boolean} -> Aff (db :: DB | eff) (Array {myvar :: Number})
 myfunc conn {myinvar} = query \"select * from myfunc(?)\" [toSql myinvar] conn
 ```
+
+Non-standard Data Types
+=======================
+UUID
+----
+Postgres's UUID type is used a lot, but Sqltopurs doesn't assume how you want to use the UUID type. If you want it just as a newtype, you can add following line to your "extra" file:
+```
+newtype UUID = UUID String
+```
+
+Alternatively you can use the purescript-uuid package, and import this via the "extra"file:
+```
+import Data.UUID (UUID)
+```
+
+You can even use it as just a type alias:
+```
+type UUID = String
+```

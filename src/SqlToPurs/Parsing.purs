@@ -14,7 +14,7 @@ import Data.List (List, many, (:))
 import Data.Monoid (mempty)
 import Data.Foldable (foldl)
 
-import SqlToPurs.Model (SQLFunc(SQLFunc), Type(Int, Boolean, Numeric), Var(Out, In))
+import SqlToPurs.Model (SQLFunc(SQLFunc), Type(UUID, Text, Int, Boolean, Numeric), Var(Out, In))
 
 many' :: forall m. (Monad m) => ParserT String m Char -> ParserT String m String
 many' p = fromCharArray <$> A.many p
@@ -36,8 +36,10 @@ digit = oneOf ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] <?> "digit"
 typeP :: Parser String Type
 typeP = (string "boolean" >>= \_ -> return Boolean) 
         <|> (string "int" >>= \_ -> return Int)
+        <|> (string "text" >>= \_ -> return Text)
+        <|> (string "uuid" >>= \_ -> return UUID)
         <|> numericP
-        <?> "int, boolean or numeric(x,x)"
+        <?> "int, boolean, text, uuid or numeric(x,x)"
   where numericP = do string "numeric"
                       optional whiteSpace
                       betweenBrackets do
