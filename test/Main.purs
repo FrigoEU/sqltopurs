@@ -48,7 +48,21 @@ parsingtest = describe "function parsing" do
 codegentest = describe "codegen" do
   it "should generate a type declaration for SQLFunc ADT" do
     let f = SQLFunc {name: "myfunc", vars: Cons (In "myinvar" Boolean) (Cons (Out "myvar" Numeric) Nil), set: true}
-    shouldEqual (typeDecl f) ("myfunc :: forall eff. Connection -> {myinvar :: Boolean} -> Aff (db :: DB | eff) (Array {myvar :: Number})")
+    shouldEqual (genTypeDecl f) ("myfunc :: forall eff. Connection -> {myinvar :: Boolean} -> Aff (db :: DB | eff) (Array {myvar :: Number})")
   it "should generate a function definition" do
     let f = SQLFunc {name: "myfunc", vars: Cons (In "myinvar" Boolean) (Cons (Out "myvar" Numeric) (Cons (In "myinvar2" Int) Nil)), set: true}
-    shouldEqual (funcDef f) ("myfunc conn {myinvar, myinvar2} = query \"select * from myfunc(?,?)\" [toSql myinvar, toSql myinvar2] conn >>= unsafeCoerce")
+    shouldEqual (genFuncDef "Res1" f) ("myfunc conn {myinvar, myinvar2} = (map runRes1) <$> query (Query \"select * from myfunc(?,?)\") [toSql myinvar, toSql myinvar2] conn")
+  it "should generate a newtype" do
+    let nr = NamedRecord "Res1" (Cons (Out "myinvar" Boolean) Nil)
+    shouldEqual (genNewType nr) ("newtype Res1 = Res1 {myinvar :: Boolean}")
+  it "should generate a run function" do
+    let nr = NamedRecord "Res1" (Cons (Out "myinvar" Boolean) Nil)
+    shouldEqual (genRun nr) (joinWith "\n" [ "runRes1 :: Res1 -> {myinvar :: Boolean}"
+                                           , "runRes1 (Res1 a) = a"])
+
+  it "should generate a foreign instance" do
+    let nr = NamedRecord "Res1" (Cons (Out "myinvar" Boolean) Nil)
+    shouldEqual (genForeign nr) (joinWith "\n" [ "instance isForeignRes1 :: IsForeign Res1 where"
+                                               , "  read obj = do"
+                                               , "    myinvar <- readProp \"myinvar\" obj"
+                                               , "    return $ Res1 {myinvar}"])

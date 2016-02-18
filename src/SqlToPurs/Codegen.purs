@@ -1,40 +1,74 @@
 module SqlToPurs.Codegen where
 
-import Prelude (($), (<>), (<$>), (>), not)
+import Prelude (($), (<>), (<$>), (>), not, map, (>>>), show, (-))
 import SqlToPurs.Model (SQLFunc(SQLFunc), Type(UUID, Text, Numeric, Boolean, Int), Var(Out, In))
 import Data.String (joinWith)
 import Data.Array (replicate)
 import Data.List as L
-import Data.Foldable (class Foldable, foldMap)
+import Data.Tuple (Tuple(Tuple))
+import Data.Foldable (foldMap)
+
+data NamedRecord = NamedRecord String (L.List Var)
 
 header :: String
 header = joinWith "\n" [ "module MyApp.SQL where"
-                           , "import Database.AnyDB (Connection, DB)"
-                           , "import Data.Array (Array)"
-                           , "import Control.Monad.Aff (Aff)"
-                           , "import Unsafe.Coerce (unsafeCoerce)" ]
+                       , "import Prelude ((<$>), return, bind, map, ($))"
+                       , "import Database.AnyDB (Connection, DB, query, Query(Query))"
+                       , "import Control.Monad.Aff (Aff)"
+                       , "import Data.Foreign.Class (class IsForeign, readProp)"]
 
-full :: forall f. (Foldable f) => f SQLFunc -> String
-full fs = foldMap (\s -> typeDecl s <> "\n" <> funcDef s <> "\n") fs
+full :: L.List SQLFunc -> String
+full fs = let withIndex = (L.zip fs (L.range 0 (L.length fs - 1)))
+           in foldMap (\(Tuple s i) -> let recname = "Res" <> show i
+                                           r = makeOutputRec recname s 
+                                        in genNewType r <> "\n"
+                                           <> genRun r <> "\n"
+                                           <> genForeign r <> "\n"
+                                           <> genTypeDecl s <> "\n" 
+                                           <> genFuncDef recname s <> "\n\n") 
+                                       withIndex
 
-typeDecl :: SQLFunc -> String
-typeDecl (SQLFunc {name, vars, set}) = 
+makeOutputRec :: String -> SQLFunc -> NamedRecord
+makeOutputRec s (SQLFunc {vars}) = NamedRecord s (L.filter (not isIn) vars)
+
+
+genTypeDecl :: SQLFunc -> String
+genTypeDecl (SQLFunc {name, vars, set}) = 
   let invars = L.filter isIn vars
       outvars = L.filter (not isIn) vars
    in name 
       <> " :: forall eff. Connection -> " 
-      <> varsToPurs invars
+      <> varsToRecord invars
       <> (if (L.length invars > 0) then " -> " else "")
       <> "Aff (db :: DB | eff) "
-      <> "(" <> (if set then "Array " else "") <> varsToPurs outvars <> ")"
+      <> "(" <> (if set then "Array " else "") <> varsToRecord outvars <> ")"
 
 isIn :: Var -> Boolean
 isIn (In _ _) = true
 isIn _        = false
 
-varsToPurs :: L.List Var -> String
-varsToPurs L.Nil = ""
-varsToPurs vs = "{" <> joinWith ", " (L.toUnfoldable $ varToPurs <$> vs) <> "}" 
+genNewType :: NamedRecord -> String
+genNewType (NamedRecord nm vars) = "newtype " <> nm <> " = " <> nm <> " " <> varsToRecord vars
+
+genRun :: NamedRecord -> String
+genRun (NamedRecord nm vars) = "run" <> nm <> " :: " <> nm <> " -> " <> varsToRecord vars <> "\n" 
+                            <> "run" <> nm <> " (" <> nm <> " a) = a"
+
+genForeign :: NamedRecord -> String
+genForeign (NamedRecord nm vars) = "instance isForeign" <> nm <> " :: IsForeign " <> nm <>" where\n"
+                                <> "  read obj = do\n"
+                                <> foldMap (genReadProp >>> (\s -> "    " <> s <> "\n")) vars 
+                                <> "    return $ " <> nm 
+                                    <> " {" <> joinWith "," (L.toUnfoldable $ map getName vars) <> "}"
+
+genReadProp :: Var -> String
+genReadProp (Out nm UUID) = nm <> " <- UUID <$> readProp \""<> nm <> "\" obj"
+genReadProp (Out nm _   ) = nm <> " <- readProp \""<> nm <> "\" obj"
+genReadProp (In _ _ ) = "Can't get a readprop from an out variable, system error"
+
+varsToRecord :: L.List Var -> String
+varsToRecord L.Nil = ""
+varsToRecord vs = "{" <> joinWith ", " (L.toUnfoldable $ varToPurs <$> vs) <> "}" 
 
 varToPurs :: Var -> String
 varToPurs (In name t)  = name <> " :: " <> typeToPurs t
@@ -47,8 +81,8 @@ typeToPurs Numeric = "Number"
 typeToPurs Text = "String"
 typeToPurs UUID = "UUID"
 
-funcDef :: SQLFunc -> String
-funcDef (SQLFunc {name, vars, set}) = 
+genFuncDef :: String -> SQLFunc -> String
+genFuncDef outRecName (SQLFunc {name, vars, set}) = 
   let invars = L.filter isIn vars
       outvars = L.filter (not isIn) vars
    in name 
@@ -56,9 +90,11 @@ funcDef (SQLFunc {name, vars, set}) =
       <> (if (L.length invars > 0) 
              then "{" <> (joinWith ", " (L.toUnfoldable $ getName <$> invars)) <> "}" 
              else "")
-      <> " = query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\" "
+      <> " = "
+      <> "(map run" <> outRecName <> ") <$> " 
+      <> "query (Query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\") "
       <> "[" <> joinWith ", " (L.toUnfoldable $ (\v -> "toSql " <> getName v) <$> invars) <> "]"
-      <> " conn >>= unsafeCoerce"
+      <> " conn"
 
 getName :: Var -> String
 getName (In name _) = name
