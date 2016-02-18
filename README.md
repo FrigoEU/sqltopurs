@@ -30,11 +30,14 @@ myfunc :: forall eff. Connection -> {myinvar :: Boolean} -> Aff (db :: DB | eff)
 myfunc conn {myinvar} = query \"select * from myfunc(?)\" [toSql myinvar] conn
 ```
 
+You can add another 'extra' file (-e or --extra CLI param) which will be inlined straight into the generated .purs file. This comes in handy when handeling Non-standard Data Types.
+
 Non-standard Data Types
 =======================
 UUID
 ----
-Postgres's UUID type is used a lot, but Sqltopurs doesn't assume how you want to use the UUID type. If you want it just as a newtype, you can add following line to your "extra" file:
+Postgres's UUID type is used a lot, but Sqltopurs doesn't assume how you want to use the UUID type. It will generate postgres uuid parameters as a UUID type in resulting purescript function. After that, it's up to you how you want to handle it. 
+If you want to use it as a newtype, you can add following line to your "extra" file:
 ```
 newtype UUID = UUID String
 ```
