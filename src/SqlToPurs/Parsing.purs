@@ -39,7 +39,7 @@ typeP = (string "boolean" >>= \_ -> return Boolean)
         <|> (string "date" >>= \_ -> return SqlDate)
         <|> (string "timestamp without time zone" >>= \_ -> return TimestampWithoutTimeZone)
         <|> numericP
-        <?> "int, boolean, text, uuid or numeric(x,x)"
+        <?> "int, boolean, text, uuid, numeric(x,x), date or timestamp without time zone"
   where numericP = do string "numeric"
                       optional whiteSpace
                       betweenBrackets do
