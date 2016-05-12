@@ -8,10 +8,10 @@ import Data.List (List, many, (:))
 import Data.Maybe (Maybe(Nothing, Just), isJust)
 import Data.Monoid (mempty)
 import Data.String (fromCharArray)
-import Prelude (class Monad, return, (>>=), (<<<), (<$>), ($), bind)
+import Prelude (class Monad, return, (>>=), (<<<), (<$>), ($), bind, (>>>))
 import SqlToPurs.Model (SQLFunc(SQLFunc), Type(TimestampWithoutTimeZone, SqlDate, UUID, Text, Int, Boolean, Numeric), Var(Out, In))
 import Text.Parsing.Parser (ParserT, Parser)
-import Text.Parsing.Parser.Combinators (optional, optionMaybe, sepEndBy1, (<?>), between)
+import Text.Parsing.Parser.Combinators (try, optional, optionMaybe, sepEndBy1, (<?>), between)
 import Text.Parsing.Parser.String (anyChar, whiteSpace, string, char, oneOf, noneOf)
 
 many' :: forall m. (Monad m) => ParserT String m Char -> ParserT String m String
@@ -61,9 +61,9 @@ varsP :: Parser String (List Var)
 varsP = betweenBrackets $ sepEndBy1 varP (optional whiteSpace *> char ',' *> optional whiteSpace)
 
 setP :: Parser String Boolean
-setP = isJust <$> optionMaybe ((string "RETURNS " <|> string "returns ") 
-                               *> (string "SETOF " <|> string "setof ")
-                               *> (string "RECORD" <|> string "record"))
+setP = isJust <$> (try >>> optionMaybe) ((string "RETURNS " <|> string "returns ") 
+                                         *> (string "SETOF " <|> string "setof ")
+                                         *> (string "RECORD" <|> string "record"))
 
 createStatementP :: Parser String String
 createStatementP = (string "CREATE FUNCTION " <|> string "create function ") 

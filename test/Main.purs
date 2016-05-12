@@ -1,22 +1,21 @@
 module Test.Main where
 
-import Prelude
+import Prelude (bind, (<>), ($), unit, return)
 import Control.Apply ((*>))
-import Control.Monad.Eff.Console
 import Data.Foldable (foldl)
 import Data.String (joinWith)
 import Data.List (List(Cons,Nil))
 import Text.Parsing.Parser (ParseError(ParseError), runParser)
-import Data.Either (Either(Left,Right), either)
+import Data.Either (either)
 
-import SqlToPurs.Model
-import SqlToPurs.Parsing
-import SqlToPurs.Codegen
+import SqlToPurs.Model (SQLFunc(SQLFunc), Type(Boolean, Int, Numeric, TimestampWithoutTimeZone), Var(Out, In))
+import SqlToPurs.Parsing (functionsP)
+import SqlToPurs.Codegen (NamedRecord(NamedRecord), genForeign, genRun, genNewType, genFuncDef, genTypeDecl)
 
 import Test.Spec.Runner           (run)
 import Test.Spec.Reporter.Console (consoleReporter)
 
-import Test.Spec                  (describe, pending, it)
+import Test.Spec (it, describe)
 import Test.Spec.Assertions       (shouldEqual, fail)
 
 main = run [consoleReporter] $ foldl (*>) (return unit) [parsingtest, codegentest]
@@ -24,7 +23,7 @@ main = run [consoleReporter] $ foldl (*>) (return unit) [parsingtest, codegentes
 parsingtest = describe "function parsing" do
   it "should parse the SQLFunc ADT's out of the sql script" do
     let sql = joinWith "\n" [ "blablablablababla;"
-                            , "CREATE FUNCTION myfunc (IN myinvar boolean, OUT myvar numeric(2,2))"
+                            , "CREATE FUNCTION myfunc (IN myinvar boolean, OUT myvar numeric(2,2), OUT myvar2 timestamp without time zone)"
                             , "RETURNS SETOF record"
                             , "AS $$"
                             , "  SELECT id, enrollment_id, amount, paid"
@@ -33,13 +32,14 @@ parsingtest = describe "function parsing" do
                             , "  ;"
                             , "$$ LANGUAGE SQL;"
                             , "CREATE FUNCTION myfunc (IN myinvar boolean, IN mysecondvar int, OUT myvar numeric(2,2), OUT mysecondoutvar int)"
+                            , "returns uuid"
                             , "AS $$"
                             , "SELECT id, enrollment_id, amount, paid"
                             , "from invoices"
                             , "where amount >= am"
                             , ";"
                             , "$$ LANGUAGE SQL;" ]
-    let f1 = SQLFunc {name: "myfunc", vars: Cons (In "myinvar" Boolean) (Cons (Out "myvar" Numeric) Nil), set: true}
+    let f1 = SQLFunc {name: "myfunc", vars: Cons (In "myinvar" Boolean) (Cons (Out "myvar" Numeric) (Cons (Out "myvar2" TimestampWithoutTimeZone) Nil)), set: true}
     let f2 = SQLFunc {name: "myfunc", vars: Cons (In "myinvar" Boolean) (Cons (In "mysecondvar" Int) (Cons (Out "myvar" Numeric) (Cons (Out "mysecondoutvar" Int) Nil))), set: false}
     either (\(ParseError {message}) -> fail $ "Parsing failed: " <> message) 
            (shouldEqual (Cons f2 (Cons f1 Nil))) 
