@@ -2,7 +2,7 @@ Work in progress
 
 Why?
 ====
-PureScript for web applications allows type safety to stretch from frontend to backend. I'd like to also have it stretch to the database. I've had only bad experiences with ORM's. So I wrote this CLI that builds Purescript function definitions from (Postgres) SQL function definitions. The Postgres SQL engine will check the function definitions you feed it (at design time!) for syntax and schema errors, and this CLI will then bridge the gap into your PureScript application. It's not a strong guarantee that things will not fail, but with a good build pipeline and/or CI to keep things in sync, this gives (me personally at least) very high confidence that the interactions between my app code and DB code are well typed.
+PureScript for web applications allows type safety to stretch from frontend to backend. I'd like to also have it stretch to the database. I've had only bad experiences with ORM's. So I wrote this CLI that builds Purescript function definitions from (Postgres) SQL function definitions. The Postgres SQL engine will check the function definitions you feed it (at design time! psql mydb < schema.sql) for syntax and schema errors, and this CLI will then bridge the gap into your PureScript application. It's not a strong guarantee that things will not fail, but with a good build pipeline and/or CI to keep things in sync, this gives (me personally at least) very high confidence that the interactions between my app code and DB code are well typed.
 
 How?
 ====
@@ -30,12 +30,12 @@ myfunc :: forall eff. Connection -> {myinvar :: Boolean} -> Aff (db :: DB | eff)
 myfunc conn {myinvar} = query \"select * from myfunc(?)\" [toSql myinvar] conn
 ```
 
-You can add another 'extra' file (-e or --extra CLI param) which will be inlined straight into the generated .purs file. This comes in handy when handeling Non-standard Data Types.
+You can add another 'extra' file (-e or --extra CLI param) which will be inlined straight into the generated .purs file. This comes in handy when using PostgreSQL Data Types that can't be easily mapped to PureScript primitive types.
 
-Non-standard Data Types
-=======================
-UUID
-----
+Data Types that can't be easily mapped to PureScript primitive types
+====================================================================
+eg: UUID
+--------
 Postgres's UUID type is used a lot, but Sqltopurs doesn't assume how you want to use the UUID type. It will generate postgres uuid parameters as a UUID type in resulting purescript function. After that, it's up to you how you want to handle it. 
 If you want to use it as a newtype, you can add following line to your "extra" file:
 ```

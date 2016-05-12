@@ -1,12 +1,12 @@
 module SqlToPurs.Codegen where
 
-import Prelude (($), (<>), (<$>), (>), not, map, (>>>), show, (-))
-import SqlToPurs.Model (SQLFunc(SQLFunc), Type(UUID, Text, Numeric, Boolean, Int), Var(Out, In))
-import Data.String (joinWith)
-import Data.Array (replicate)
 import Data.List as L
-import Data.Tuple (Tuple(Tuple))
+import Data.Array (replicate)
 import Data.Foldable (foldMap)
+import Data.String (joinWith)
+import Data.Tuple (Tuple(Tuple))
+import Prelude (($), (<>), (<$>), (>), not, map, (>>>), show, (-))
+import SqlToPurs.Model (SQLFunc(SQLFunc), Type(TimestampWithoutTimeZone, SqlDate, UUID, Text, Numeric, Boolean, Int), Var(Out, In))
 
 data NamedRecord = NamedRecord String (L.List Var)
 
@@ -80,6 +80,9 @@ typeToPurs Boolean = "Boolean"
 typeToPurs Numeric = "Number"
 typeToPurs Text = "String"
 typeToPurs UUID = "UUID"
+typeToPurs SqlDate = "SqlDate"
+typeToPurs TimestampWithoutTimeZone = "TimestampWithoutTimeZone"
+
 
 genFuncDef :: String -> SQLFunc -> String
 genFuncDef outRecName (SQLFunc {name, vars, set}) = 

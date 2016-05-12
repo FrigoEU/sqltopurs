@@ -1,20 +1,18 @@
 module SqlToPurs.Parsing where
 
-import Prelude (class Monad, return, (>>=), (<<<), (<$>), ($), bind)
-
-import Text.Parsing.Parser (ParserT, Parser)
-import Text.Parsing.Parser.String (anyChar, whiteSpace, string, char, oneOf, noneOf)
-import Text.Parsing.Parser.Combinators (optional, optionMaybe, sepEndBy1, (<?>), between)
 import Data.Array as A
-import Data.String (fromCharArray)
-import Data.Maybe (Maybe(Nothing, Just), isJust)
 import Control.Alt ((<|>))
 import Control.Apply ((*>))
-import Data.List (List, many, (:))
-import Data.Monoid (mempty)
 import Data.Foldable (foldl)
-
-import SqlToPurs.Model (SQLFunc(SQLFunc), Type(UUID, Text, Int, Boolean, Numeric), Var(Out, In))
+import Data.List (List, many, (:))
+import Data.Maybe (Maybe(Nothing, Just), isJust)
+import Data.Monoid (mempty)
+import Data.String (fromCharArray)
+import Prelude (class Monad, return, (>>=), (<<<), (<$>), ($), bind)
+import SqlToPurs.Model (SQLFunc(SQLFunc), Type(TimestampWithoutTimeZone, SqlDate, UUID, Text, Int, Boolean, Numeric), Var(Out, In))
+import Text.Parsing.Parser (ParserT, Parser)
+import Text.Parsing.Parser.Combinators (optional, optionMaybe, sepEndBy1, (<?>), between)
+import Text.Parsing.Parser.String (anyChar, whiteSpace, string, char, oneOf, noneOf)
 
 many' :: forall m. (Monad m) => ParserT String m Char -> ParserT String m String
 many' p = fromCharArray <$> A.many p
@@ -38,6 +36,8 @@ typeP = (string "boolean" >>= \_ -> return Boolean)
         <|> (string "int" >>= \_ -> return Int)
         <|> (string "text" >>= \_ -> return Text)
         <|> (string "uuid" >>= \_ -> return UUID)
+        <|> (string "date" >>= \_ -> return SqlDate)
+        <|> (string "timestamp without time zone" >>= \_ -> return TimestampWithoutTimeZone)
         <|> numericP
         <?> "int, boolean, text, uuid or numeric(x,x)"
   where numericP = do string "numeric"
