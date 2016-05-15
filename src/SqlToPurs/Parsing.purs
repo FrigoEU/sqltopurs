@@ -4,16 +4,16 @@ import Control.Alt ((<|>))
 import Control.Apply ((*>))
 import Control.Bind (join)
 import Data.Array (many, snoc, length, filter, some)
-import Data.Foldable (foldl)
+import Data.Foldable (foldMap, foldl)
 import Data.List (toUnfoldable)
 import Data.Maybe (maybe, Maybe(Nothing, Just), isJust)
 import Data.Monoid (mempty)
-import Data.String (fromCharArray)
+import Data.String (fromCharArray, contains, toLower)
 import Data.Tuple (Tuple(Tuple))
-import Prelude (pure, Unit, class Monad, return, ($), bind, (<$>), (>>=), unit, (>), (&&), not, (/=), (==), (>>>), (<<<))
+import Prelude (class Monad, Unit, return, ($), bind, (<$>), unit, pure, (>>=), (<<<), (>), (&&), not, (/=), (==), (>>>))
 import SqlToPurs.Model (SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(TimestampWithoutTimeZone, SqlDate, UUID, Text, Int, Boolean, Numeric))
 import Text.Parsing.Parser (fail, ParserT, Parser)
-import Text.Parsing.Parser.Combinators (sepEndBy, optionMaybe, manyTill, optional, sepEndBy1, (<?>), try, between)
+import Text.Parsing.Parser.Combinators (optional, choice, sepBy, manyTill, sepBy1, (<?>), try, between)
 import Text.Parsing.Parser.String (anyChar, string, whiteSpace, char, oneOf)
 import Text.Parsing.Parser.Token (alphaNum)
 
@@ -57,7 +57,7 @@ varAndDirP = do
   return $ Tuple dir var
 
 varsP :: Parser String (Array (Tuple Dir Var))
-varsP = betweenBrackets $ toUnfoldable <$> (sepEndBy varAndDirP (optional whiteSpace *> char ',' *> optional whiteSpace))
+varsP = betweenBrackets $ toUnfoldable <$> (sepBy varAndDirP (optional whiteSpace *> char ',' *> optional whiteSpace))
 
 returnsP :: Parser String (Maybe (Tuple Boolean String))
 returnsP = (try >>> maybeP)
@@ -147,8 +147,8 @@ tableP = do
   whiteSpace
   string "("
   whiteSpace
-  fields <- toUnfoldable <$> (sepEndBy1 (fieldP name) (optional whiteSpace *> char ',' *> optional whiteSpace))
-  whiteSpace
+  fields <- toUnfoldable <$> (sepBy1 (fieldP name) (optional whiteSpace *> char ',' *> optional whiteSpace *> optional commentP *> optional whiteSpace))
+  optional whiteSpace
   string ")"
   optional (string ";")
   return $ SQLTable {name, fields}
@@ -161,11 +161,10 @@ fieldP table = do
   name <- word
   whiteSpace
   t <- typeP
-  whiteSpace
-  primarykey <- optionMaybe (string "PRIMARY KEY" <|> string "primary key")
-  notnull <- optionMaybe (string "NOT NULL" <|> string "not null")
   optional whiteSpace
-  optional (string "PRIMARY KEY" <|> string "primary key" <|> string "NOT NULL" <|> string "not null")
+  qualifiers <- foldMap toLower <$> sepBy (choice [string "primary key", string "PRIMARY KEY", string "not null", string "NOT NULL", string "unique", string "UNIQUE"]) (string " ")
+  let primarykey = contains "primary key" qualifiers
+  let notnull = contains "not null" qualifiers
   optional whiteSpace
-  return $ SQLField {name, table, "type": t, primarykey: isJust primarykey, notnull: isJust notnull}
+  return $ SQLField {name, table, "type": t, primarykey, notnull}
 

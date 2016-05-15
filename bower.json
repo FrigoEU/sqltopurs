@@ -19,7 +19,8 @@
     "purescript-yargs": "0.7.3"
   },
   "devDependencies": {
-    "purescript-spec": "~0.7.2"
+    "purescript-spec": "~0.7.2",
+    "purescript-debug": "*"
   },
   "resolutions": {
     "purescript-node-fs": "~0.11.0",

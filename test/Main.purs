@@ -5,7 +5,7 @@ import Data.Either (Either(Right), either)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(Nothing, Just))
 import Data.String (joinWith)
-import Prelude (bind, (<>), ($), unit, return)
+import Prelude (show, bind, (<>), ($), unit, return)
 import SqlToPurs.Codegen (toEither, genForeign, genRun, genNewType, genFuncDef, genTypeDecl)
 import SqlToPurs.Model (SQLField(SQLField), OutParams(Separate, FullTable), Var(Var), SQLTable(SQLTable), SQLFunc(SQLFunc), Type(Numeric, SqlDate, Text, UUID))
 import SqlToPurs.Parsing (schemaP, functionsP)
@@ -27,8 +27,8 @@ sql = joinWith "\n" [ "blablablablababla;"
 
                     , "create table posts ("
                     , "  id uuid PRIMARY KEY,"
-                    , "  activityId uuid NOT NULL,"
-                    , "  datePoint date,"
+                    , "  activityId uuid UNIQUE NOT NULL, -- ignore 'unique' test"
+                    , "  datePoint date, --comment test"
                     , "  anumber numeric(2,2) NOT NULL"
                     , ");"
 
@@ -74,11 +74,11 @@ f2 = SQLFunc { name: "myfunc2"
 
 parsingtest = describe "function parsing" do
   it "should parse the SQLFunc ADT's out of the sql script" do
-    either (\(ParseError {message}) -> fail $ "Parsing failed: " <> message) 
+    either (\e -> fail $ "Parsing failed: " <> show e) 
            (shouldEqual [f1, f2]) 
            $ runParser sql functionsP
   it "should be able to parse functions without in or out vars" do
-    either (\(ParseError {message}) -> fail $ "Parsing failed: " <> message) 
+    either (\e -> fail $ "Parsing failed: " <> show e) 
            (shouldEqual [SQLFunc {name: "queryAllActivities", vars: {in: [], out: FullTable "activities"}, set: true}]) 
            $ runParser "CREATE FUNCTION queryAllActivities () RETURNS SETOF activities AS $$ SELECT * from activities; $$ LANGUAGE SQL; " functionsP
 
@@ -89,7 +89,7 @@ parsingtest = describe "function parsing" do
 
 schemaparsingtest = describe "create table parsing" do
   it "should parse the create table statements correctly" do
-    either (\(ParseError {message}) -> fail $ "Parsing failed: " <> message) 
+    either (\e -> fail $ "Parsing failed: " <> show e) 
            (shouldEqual [activities, posts]) 
            $ runParser sql schemaP
 

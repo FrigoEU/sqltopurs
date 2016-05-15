@@ -15,7 +15,7 @@ import Node.Yargs.Setup (YargsSetup, example, usage)
 import Prelude (Unit, (<>), return, (==), bind, ($), const, show, (<<<), (<*>), (<$>))
 import SqlToPurs.Codegen (header, full)
 import SqlToPurs.Parsing (schemaP, functionsP)
-import Text.Parsing.Parser (ParseError(ParseError), runParser)
+import Text.Parsing.Parser (runParser)
 
 setup :: YargsSetup
 setup = usage "$0 -i Inputfile -o Outputfile" 
@@ -30,7 +30,7 @@ go :: forall eff. String -> String -> String -> Eff (fs :: FS, console :: CONSOL
 go i o e = runAff (log <<< ("Error: " <> _) <<< show) (const $ log "Done") do
   sql <- readTextFile UTF8 i
   extra <- if e == "" then return "" else readTextFile UTF8 e
-  parsedFunctions <- either (\(ParseError {message}) -> throwError $ error $ "ParseError: " <> message) return $ runParser sql functionsP
-  parsedSchemas <- either (\(ParseError {message}) -> throwError $ error $ "ParseError: " <> message) return $ runParser sql schemaP
+  parsedFunctions <- either (\e -> throwError $ error $ "ParseError: " <> show e) return $ runParser sql functionsP
+  parsedSchemas <- either (\e -> throwError $ error $ "ParseError: " <> show e) return $ runParser sql schemaP
   gen <- either (\e -> throwError $ error $ e) return $ full parsedSchemas parsedFunctions
   writeTextFile UTF8 o (header <> "\n" <> extra <> "\n" <> gen)

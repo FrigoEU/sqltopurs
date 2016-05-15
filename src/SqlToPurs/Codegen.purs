@@ -6,7 +6,7 @@ import Data.Array (range, zip, length, replicate)
 import Data.Either (Either(Left, Right))
 import Data.Foldable (find, foldMap)
 import Data.Maybe (maybe, Maybe(Nothing, Just))
-import Data.String (joinWith)
+import Data.String (toLower, joinWith)
 import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
 import Prelude (($), id, (<>), (<$>), (>), (||), pure, show, map, bind, (>>=), (==), flip, (-))
@@ -16,9 +16,11 @@ type Exc a = Eff (err :: EXCEPTION) a
 
 header :: String
 header = joinWith "\n" [ "module MyApp.SQL where"
-                       , "import Prelude ((<$>), return, bind, map, ($))"
+                       , "import Prelude ((<$>), return, bind, map, ($), (<*>), (>>=))"
                        , "import Database.AnyDB (Connection, DB, query, Query(Query))"
                        , "import Control.Monad.Aff (Aff)"
+                       , "import Data.Maybe (Maybe(Nothing, Just))"
+                       , "import Data.Foreign (isNull)"
                        , "import Database.AnyDB.SqlValue (toSql)"
                        , "import Data.Foreign.Class (class IsForeign, readProp)"]
 
@@ -42,12 +44,12 @@ toEither effA =
    in runPure $ catchException (\e -> pure $ Left $ message e) wrapped
 
 tableToNamedFields :: Array SQLTable -> String -> Maybe (Array NamedField)
-tableToNamedFields ts tableN = find (\(SQLTable {name}) -> name == tableN) ts >>= \(SQLTable {fields}) -> pure $ (\f -> NamedField {name: Nothing, field: f}) <$> fields
+tableToNamedFields ts tableN = find (\(SQLTable {name}) -> toLower name == toLower tableN) ts >>= \(SQLTable {fields}) -> pure $ (\f -> NamedField {name: Nothing, field: f}) <$> fields
 
 varToNamedField :: Array SQLTable -> Var -> Maybe NamedField
 varToNamedField ts (Var n tableN fieldN) = do
   fields <- tableToNamedFields ts tableN
-  (NamedField {field}) <- find (\(NamedField {field: (SQLField {name})}) -> name == fieldN ) fields
+  (NamedField {field}) <- find (\(NamedField {field: (SQLField {name})}) -> toLower name == toLower fieldN ) fields
   pure $ NamedField {name: n, field: field}
 
 
