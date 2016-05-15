@@ -1,78 +1,104 @@
 module SqlToPurs.Codegen where
 
-import Data.List as L
-import Data.Array (replicate)
-import Data.Foldable (foldMap)
+import Control.Monad.Eff (runPure, Eff)
+import Control.Monad.Eff.Exception (EXCEPTION, throw, message, catchException)
+import Data.Array (range, zip, length, replicate)
+import Data.Either (Either(Left, Right))
+import Data.Foldable (find, foldMap)
+import Data.Maybe (maybe, Maybe(Nothing, Just))
 import Data.String (joinWith)
+import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
-import Prelude (($), (<>), (<$>), (>), not, map, (>>>), show, (-))
-import SqlToPurs.Model (SQLFunc(SQLFunc), Type(TimestampWithoutTimeZone, SqlDate, UUID, Text, Numeric, Boolean, Int), Var(Out, In))
+import Prelude (($), id, (<>), (<$>), (>), (||), pure, show, map, bind, (>>=), (==), flip, (-))
+import SqlToPurs.Model (NamedField(NamedField), OutParams(Separate, FullTable), SQLField(SQLField), SQLTable(SQLTable), Var(Var), SQLFunc(SQLFunc), Type(TimestampWithoutTimeZone, SqlDate, UUID, Text, Numeric, Boolean, Int))
 
-data NamedRecord = NamedRecord String (L.List Var)
+type Exc a = Eff (err :: EXCEPTION) a
 
 header :: String
 header = joinWith "\n" [ "module MyApp.SQL where"
                        , "import Prelude ((<$>), return, bind, map, ($))"
                        , "import Database.AnyDB (Connection, DB, query, Query(Query))"
                        , "import Control.Monad.Aff (Aff)"
+                       , "import Database.AnyDB.SqlValue (toSql)"
                        , "import Data.Foreign.Class (class IsForeign, readProp)"]
 
-full :: L.List SQLFunc -> String
-full fs = let withIndex = (L.zip fs (L.range 0 (L.length fs - 1)))
-           in foldMap (\(Tuple s i) -> let recname = "Res" <> show i
-                                           r = makeOutputRec recname s 
-                                        in genNewType r <> "\n"
-                                           <> genRun r <> "\n"
-                                           <> genForeign r <> "\n"
-                                           <> genTypeDecl s <> "\n" 
-                                           <> genFuncDef recname s <> "\n\n") 
-                                       withIndex
+full :: Array SQLTable -> Array SQLFunc -> Either String String
+full ts fs = let withIndex = zip fs (range 0 (length fs - 1))
+                 lines = flip map withIndex (\(Tuple s@(SQLFunc {name, vars: {in: invars, out: outvars}, set}) i) -> 
+                                                let recname = "Res" <> show i
+                                                 in do 
+                                                   nt <- genNewType recname ts outvars
+                                                   run <- genRun recname ts outvars
+                                                   forn <- genForeign recname ts outvars
+                                                   typedecl <- genTypeDecl ts s
+                                                   let funcdef = genFuncDef recname s
+                                                   pure $ nt <> "\n" <> run <> "\n" <> forn <> "\n" <> typedecl <> "\n" <> funcdef <> "\n\n" ) 
+                 line = (foldMap id <$> sequence lines) :: Exc String
+              in toEither line
 
-makeOutputRec :: String -> SQLFunc -> NamedRecord
-makeOutputRec s (SQLFunc {vars}) = NamedRecord s (L.filter (not isIn) vars)
+toEither :: forall a. Exc a -> Either String a
+toEither effA =
+  let wrapped = Right <$> effA
+   in runPure $ catchException (\e -> pure $ Left $ message e) wrapped
+
+tableToNamedFields :: Array SQLTable -> String -> Maybe (Array NamedField)
+tableToNamedFields ts tableN = find (\(SQLTable {name}) -> name == tableN) ts >>= \(SQLTable {fields}) -> pure $ (\f -> NamedField {name: Nothing, field: f}) <$> fields
+
+varToNamedField :: Array SQLTable -> Var -> Maybe NamedField
+varToNamedField ts (Var n tableN fieldN) = do
+  fields <- tableToNamedFields ts tableN
+  (NamedField {field}) <- find (\(NamedField {field: (SQLField {name})}) -> name == fieldN ) fields
+  pure $ NamedField {name: n, field: field}
 
 
-genTypeDecl :: SQLFunc -> String
-genTypeDecl (SQLFunc {name, vars, set}) = 
-  let invars = L.filter isIn vars
-      outvars = L.filter (not isIn) vars
-   in name 
-      <> " :: forall eff. Connection -> " 
-      <> varsToRecord invars
-      <> (if (L.length invars > 0) then " -> " else "")
-      <> "Aff (db :: DB | eff) "
-      <> "(" <> (if set then "Array " else "") <> varsToRecord outvars <> ")"
+genTypeDecl :: Array SQLTable -> SQLFunc -> Exc String
+genTypeDecl ts (SQLFunc {name, vars: {in: invars, out: outvars}, set}) = do
+  outrec <- outParamsToRecord ts outvars
+  infields <- varsToNamedFields ts invars
+  pure $ name 
+         <> " :: forall eff. Connection -> " 
+         <> namedFieldsToRecord infields
+         <> (if (length infields > 0) then " -> " else "")
+         <> "Aff (db :: DB | eff) "
+         <> "(" <> (if set then "Array " else "") <> outrec <> ")"
 
-isIn :: Var -> Boolean
-isIn (In _ _) = true
-isIn _        = false
+genNewType :: String -> Array SQLTable -> OutParams -> Exc String
+genNewType nm ts outp = outParamsToRecord ts outp >>= \record -> pure $ "newtype " <> nm <> " = " <> nm <> " " <> record
 
-genNewType :: NamedRecord -> String
-genNewType (NamedRecord nm vars) = "newtype " <> nm <> " = " <> nm <> " " <> varsToRecord vars
+genRun :: String -> Array SQLTable -> OutParams -> Exc String
+genRun nm ts outp = outParamsToRecord ts outp >>= \record -> pure $ "run" <> nm <> " :: " <> nm <> " -> " <> record <> "\n" <> "run" <> nm <> " (" <> nm <> " a) = a"
 
-genRun :: NamedRecord -> String
-genRun (NamedRecord nm vars) = "run" <> nm <> " :: " <> nm <> " -> " <> varsToRecord vars <> "\n" 
-                            <> "run" <> nm <> " (" <> nm <> " a) = a"
+genForeign :: String -> Array SQLTable -> OutParams -> Exc String
+genForeign nm ts outp = do
+  fields <- outParamsToNamedFields ts outp
+  let objSugar =  "{" <> joinWith ", " (map (\f -> getFieldName f <> ": _") fields) <> "}"
+  pure $ "instance isForeign" <> nm <> " :: IsForeign " <> nm <>" where read obj = " 
+          <> nm <> " <$> " <> "(" <> objSugar <> " <$> " <> (joinWith " <*> " (map genReadProp fields)) <> ")"
 
-genForeign :: NamedRecord -> String
-genForeign (NamedRecord nm vars) = "instance isForeign" <> nm <> " :: IsForeign " <> nm <>" where\n"
-                                <> "  read obj = do\n"
-                                <> foldMap (genReadProp >>> (\s -> "    " <> s <> "\n")) vars 
-                                <> "    return $ " <> nm 
-                                    <> " {" <> joinWith "," (L.toUnfoldable $ map getName vars) <> "}"
+genReadProp :: NamedField -> String
+genReadProp nf@(NamedField {field: (SQLField {primarykey, notnull})}) = 
+  "(readProp \"" <> name <> "\" obj" <> (if primarykey || notnull then "" else " >>= \\p -> if isNull p then Nothing else Just p") <> ")"
+    where name = getFieldName nf
 
-genReadProp :: Var -> String
-genReadProp (Out nm UUID) = nm <> " <- UUID <$> readProp \""<> nm <> "\" obj"
-genReadProp (Out nm _   ) = nm <> " <- readProp \""<> nm <> "\" obj"
-genReadProp (In _ _ ) = "Can't get a readprop from an out variable, system error"
+outParamsToNamedFields :: Array SQLTable -> OutParams -> Exc (Array NamedField)
+outParamsToNamedFields ts (FullTable tableN) = maybe (throw $ "Table " <> tableN <> "not found!") pure (tableToNamedFields ts tableN)
+outParamsToNamedFields ts (Separate vars) = varsToNamedFields ts vars
 
-varsToRecord :: L.List Var -> String
-varsToRecord L.Nil = ""
-varsToRecord vs = "{" <> joinWith ", " (L.toUnfoldable $ varToPurs <$> vs) <> "}" 
+varsToNamedFields :: Array SQLTable -> Array Var -> Exc (Array NamedField)
+varsToNamedFields ts vars = traverse (\v -> maybe (throw $ show v <> "not found!") pure $ varToNamedField ts v) vars
 
-varToPurs :: Var -> String
-varToPurs (In name t)  = name <> " :: " <> typeToPurs t
-varToPurs (Out name t) = name <> " :: " <> typeToPurs t
+outParamsToRecord :: Array SQLTable -> OutParams -> Exc String
+outParamsToRecord ts outp = namedFieldsToRecord <$> (outParamsToNamedFields ts outp)
+
+namedFieldsToRecord :: Array NamedField -> String
+namedFieldsToRecord [] = ""
+namedFieldsToRecord fs = "{" <> joinWith ", " (namedFieldToPurs <$> fs) <> "}" 
+
+namedFieldToPurs :: NamedField -> String
+namedFieldToPurs nf@(NamedField {field: (SQLField {type: t, primarykey, notnull})}) = 
+  name <> " :: " <> (if primarykey || notnull then "" else "Maybe ") <> typeToPurs t
+    where
+      name = getFieldName nf
 
 typeToPurs :: Type -> String
 typeToPurs Int = "Int"
@@ -85,27 +111,25 @@ typeToPurs TimestampWithoutTimeZone = "TimestampWithoutTimeZone"
 
 
 genFuncDef :: String -> SQLFunc -> String
-genFuncDef outRecName (SQLFunc {name, vars, set}) = 
-  let invars = L.filter isIn vars
-      outvars = L.filter (not isIn) vars
-   in name 
+genFuncDef nm (SQLFunc {name, vars: {in: invars}, set}) =
+    name 
       <> " conn "
-      <> (if (L.length invars > 0) 
-             then "{" <> (joinWith ", " (L.toUnfoldable $ getName <$> invars)) <> "}" 
+      <> (if (length invars > 0) 
+             then "{" <> (joinWith ", " (getInVarName <$> invars)) <> "}" 
              else "")
       <> " = "
-      <> "(map run" <> outRecName <> ") <$> " 
+      <> "(map run" <> nm <> ") <$> " 
       <> "query (Query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\") "
-      <> "[" <> joinWith ", " (L.toUnfoldable $ (\v -> "toSql " <> getName v) <$> invars) <> "]"
+      <> "[" <> joinWith ", " ((\v -> "toSql " <> getInVarName v) <$> invars) <> "]"
       <> " conn"
+        where
+          getInVarName :: Var -> String
+          getInVarName (Var (Just n) _     _    ) = n
+          getInVarName (Var Nothing  table field) = table <> "_" <> field
 
-getName :: Var -> String
-getName (In name _) = name
-getName (Out name _) = name
-
-toQuestionmarks :: forall a. L.List a -> String
-toQuestionmarks as = joinWith "," $ replicate (L.length as) "?"
+getFieldName :: NamedField -> String
+getFieldName (NamedField {name: n, field: (SQLField {name})}) = maybe name id n
 
 
-{-- myfunc :: forall eff. Connection -> {myinvar :: Boolean} -> Aff (db :: DB | eff) (Array {myvar :: Number}) --}
-{-- myfunc conn {myinvar} = query "select * from myfunc(?)" [toSql myinvar] conn --}
+toQuestionmarks :: forall a. Array a -> String
+toQuestionmarks as = joinWith "," $ replicate (length as) "?"
