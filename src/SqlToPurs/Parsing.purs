@@ -11,7 +11,7 @@ import Data.Monoid (mempty)
 import Data.String (fromCharArray, contains, toLower)
 import Data.Tuple (Tuple(Tuple))
 import Prelude (class Monad, Unit, return, ($), bind, (<$>), unit, pure, (>>=), (<<<), (>), (&&), not, (/=), (==), (>>>))
-import SqlToPurs.Model (SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(TimestampWithoutTimeZone, SqlDate, UUID, Text, Int, Boolean, Numeric))
+import SqlToPurs.Model (SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(TimestampWithTimeZone, TimestampWithoutTimeZone, SqlDate, UUID, Text, Int, Boolean, Numeric))
 import Text.Parsing.Parser (fail, ParserT, Parser)
 import Text.Parsing.Parser.Combinators (optional, choice, sepBy, manyTill, sepBy1, (<?>), try, between)
 import Text.Parsing.Parser.String (anyChar, string, whiteSpace, char, oneOf)
@@ -124,8 +124,9 @@ typeP = (string "boolean" >>= \_ -> return Boolean)
         <|> (string "uuid" >>= \_ -> return UUID)
         <|> (string "date" >>= \_ -> return SqlDate)
         <|> (string "timestamp without time zone" >>= \_ -> return TimestampWithoutTimeZone)
+        <|> (string "timestamp with time zone" >>= \_ -> return TimestampWithTimeZone)
         <|> numericP
-        <?> "int, boolean, text, uuid, numeric(x,x), date or timestamp without time zone"
+        <?> "int, boolean, text, uuid, numeric(x,x), date, timestamp with time zone or timestamp without time zone"
   where numericP = do string "numeric"
                       optional whiteSpace
                       betweenBrackets do

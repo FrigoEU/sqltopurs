@@ -1,6 +1,6 @@
 {
   "name": "sqltopurs",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "author": "Simon Van Casteren",
   "bin": {
     "sqltopurs": "index.js"
