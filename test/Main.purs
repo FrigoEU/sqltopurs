@@ -97,10 +97,11 @@ codegentest = describe "codegen" do
   it "should generate a type declaration for SQLFunc ADT" do
     shouldEqual (toEither $ genTypeDecl [activities, posts] f1) $ Right "myfunc :: forall eff. Client -> {myinvar :: UUID} -> Aff (db :: DB | eff) (Array {id :: UUID, description :: String})"
     shouldEqual (toEither $ genTypeDecl [activities, posts] f2) $
-      Right "myfunc2 :: forall eff. Client -> {myinvar :: UUID} -> Aff (db :: DB | eff) ({id :: UUID, activityId :: UUID, datePoint :: Maybe SqlDate, anumber :: Number})"
+      Right "myfunc2 :: forall eff. Client -> {myinvar :: UUID} -> Aff (db :: DB | eff) (Maybe {id :: UUID, activityId :: UUID, datePoint :: Maybe SqlDate, anumber :: Number})"
 
   it "should generate a function definition" do
     shouldEqual (genFuncDef "Res1" f1) ("myfunc cl {myinvar} = (map runRes1) <$> query (Query \"select * from myfunc(?)\") [toSql myinvar] cl")
+    shouldEqual (genFuncDef "Res2" f2) ("myfunc2 cl {myinvar} = (map runRes2) <$> queryOne (Query \"select * from myfunc2(?)\") [toSql myinvar] cl")
 
   it "should generate a newtype" do
     shouldEqual (toEither $ genNewType "Res1" [activities, posts] (getOutVars f1)) (Right "newtype Res1 = Res1 {id :: UUID, description :: String}")

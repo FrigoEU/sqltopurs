@@ -17,7 +17,7 @@ type Exc a = Eff (err :: EXCEPTION) a
 header :: String
 header = joinWith "\n" [ "module MyApp.SQL where"
                        , "import Prelude ((<$>), return, bind, map, ($), (<*>), (>>=))"
-                       , "import Database.Postgres (Client, DB, query, Query(Query))"
+                       , "import Database.Postgres (Client, DB, query, Query(Query), queryOne)"
                        , "import Control.Monad.Aff (Aff)"
                        , "import Data.Maybe (Maybe(Nothing, Just))"
                        , "import Data.Foreign (isNull)"
@@ -62,7 +62,7 @@ genTypeDecl ts (SQLFunc {name, vars: {in: invars, out: outvars}, set}) = do
          <> namedFieldsToRecord infields
          <> (if (length infields > 0) then " -> " else "")
          <> "Aff (db :: DB | eff) "
-         <> "(" <> (if set then "Array " else "") <> outrec <> ")"
+         <> "(" <> (if set then "Array " else "Maybe ") <> outrec <> ")" -- queryOne returns Maybe
 
 genNewType :: String -> Array SQLTable -> OutParams -> Exc String
 genNewType nm ts outp = outParamsToRecord ts outp >>= \record -> pure $ "newtype " <> nm <> " = " <> nm <> " " <> record
@@ -122,7 +122,8 @@ genFuncDef nm (SQLFunc {name, vars: {in: invars}, set}) =
              else "")
       <> " = "
       <> "(map run" <> nm <> ") <$> " 
-      <> "query (Query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\") "
+      <> (if set then "query " else "queryOne ")
+      <> "(Query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\") "
       <> "[" <> joinWith ", " ((\v -> "toSql " <> getInVarName v) <$> invars) <> "]"
       <> " cl"
         where
