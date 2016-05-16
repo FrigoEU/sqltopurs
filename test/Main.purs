@@ -111,7 +111,7 @@ codegentest = describe "codegen" do
                                                                                                             , "runRes1 (Res1 a) = a"])
 
   it "should generate a foreign instance" do
-    shouldEqual (toEither $ genForeign "Res1" [activities, posts] (getOutVars f1)) (Right $ joinWith "\n" [ "instance isForeignRes1 :: IsForeign Res1 where read obj = Res1 <$> ({id: _, description: _} <$> (readProp \"id\" obj) <*> (readProp \"description\" obj))"])
+    shouldEqual (toEither $ genForeign "Res2" [activities, posts] (getOutVars f2)) (Right "instance isForeignRes2 :: IsForeign Res2 where read obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _} <$> (readProp \"id\" obj) <*> (readProp \"activityId\" obj) <*> (readProp \"datePoint\" obj >>= \\p -> if isNull p then return Nothing else Just <$> read p) <*> (readProp \"anumber\" obj))")
 
 getOutVars :: SQLFunc -> OutParams
 getOutVars (SQLFunc {vars: {out}}) = out

@@ -22,7 +22,7 @@ header = joinWith "\n" [ "module MyApp.SQL where"
                        , "import Data.Maybe (Maybe(Nothing, Just))"
                        , "import Data.Foreign (isNull)"
                        , "import Database.Postgres.SqlValue (toSql)"
-                       , "import Data.Foreign.Class (class IsForeign, readProp)"]
+                       , "import Data.Foreign.Class (class IsForeign, readProp, read)"]
 
 full :: Array SQLTable -> Array SQLFunc -> Either String String
 full ts fs = let withIndex = zip fs (range 0 (length fs - 1))
@@ -79,7 +79,7 @@ genForeign nm ts outp = do
 
 genReadProp :: NamedField -> String
 genReadProp nf@(NamedField {field: (SQLField {primarykey, notnull})}) = 
-  "(readProp \"" <> name <> "\" obj" <> (if primarykey || notnull then "" else " >>= \\p -> if isNull p then Nothing else Just p") <> ")"
+  "(readProp \"" <> name <> "\" obj" <> (if primarykey || notnull then "" else " >>= \\p -> if isNull p then return Nothing else Just <$> read p") <> ")"
     where name = getFieldName nf
 
 outParamsToNamedFields :: Array SQLTable -> OutParams -> Exc (Array NamedField)
