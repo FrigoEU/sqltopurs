@@ -13,7 +13,7 @@ import Test.Spec (it, describe)
 import Test.Spec.Assertions (shouldEqual, fail)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (run)
-import Text.Parsing.Parser (ParseError(ParseError), runParser)
+import Text.Parsing.Parser (runParser)
 
 main = run [consoleReporter] $ foldl (*>) (return unit) [parsingtest, schemaparsingtest, codegentest]
 
@@ -95,12 +95,12 @@ schemaparsingtest = describe "create table parsing" do
 
 codegentest = describe "codegen" do
   it "should generate a type declaration for SQLFunc ADT" do
-    shouldEqual (toEither $ genTypeDecl [activities, posts] f1) $ Right "myfunc :: forall eff. Connection -> {myinvar :: UUID} -> Aff (db :: DB | eff) (Array {id :: UUID, description :: String})"
+    shouldEqual (toEither $ genTypeDecl [activities, posts] f1) $ Right "myfunc :: forall eff. Client -> {myinvar :: UUID} -> Aff (db :: DB | eff) (Array {id :: UUID, description :: String})"
     shouldEqual (toEither $ genTypeDecl [activities, posts] f2) $
-      Right "myfunc2 :: forall eff. Connection -> {myinvar :: UUID} -> Aff (db :: DB | eff) ({id :: UUID, activityId :: UUID, datePoint :: Maybe SqlDate, anumber :: Number})"
+      Right "myfunc2 :: forall eff. Client -> {myinvar :: UUID} -> Aff (db :: DB | eff) ({id :: UUID, activityId :: UUID, datePoint :: Maybe SqlDate, anumber :: Number})"
 
   it "should generate a function definition" do
-    shouldEqual (genFuncDef "Res1" f1) ("myfunc conn {myinvar} = (map runRes1) <$> query (Query \"select * from myfunc(?)\") [toSql myinvar] conn")
+    shouldEqual (genFuncDef "Res1" f1) ("myfunc cl {myinvar} = (map runRes1) <$> query (Query \"select * from myfunc(?)\") [toSql myinvar] cl")
 
   it "should generate a newtype" do
     shouldEqual (toEither $ genNewType "Res1" [activities, posts] (getOutVars f1)) (Right "newtype Res1 = Res1 {id :: UUID, description :: String}")

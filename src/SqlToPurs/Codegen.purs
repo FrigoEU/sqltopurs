@@ -17,11 +17,11 @@ type Exc a = Eff (err :: EXCEPTION) a
 header :: String
 header = joinWith "\n" [ "module MyApp.SQL where"
                        , "import Prelude ((<$>), return, bind, map, ($), (<*>), (>>=))"
-                       , "import Database.AnyDB (Connection, DB, query, Query(Query))"
+                       , "import Database.Postgres (Client, DB, query, Query(Query))"
                        , "import Control.Monad.Aff (Aff)"
                        , "import Data.Maybe (Maybe(Nothing, Just))"
                        , "import Data.Foreign (isNull)"
-                       , "import Database.AnyDB.SqlValue (toSql)"
+                       , "import Database.Postgres.SqlValue (toSql)"
                        , "import Data.Foreign.Class (class IsForeign, readProp)"]
 
 full :: Array SQLTable -> Array SQLFunc -> Either String String
@@ -58,7 +58,7 @@ genTypeDecl ts (SQLFunc {name, vars: {in: invars, out: outvars}, set}) = do
   outrec <- outParamsToRecord ts outvars
   infields <- varsToNamedFields ts invars
   pure $ name 
-         <> " :: forall eff. Connection -> " 
+         <> " :: forall eff. Client -> " 
          <> namedFieldsToRecord infields
          <> (if (length infields > 0) then " -> " else "")
          <> "Aff (db :: DB | eff) "
@@ -116,7 +116,7 @@ typeToPurs TimestampWithTimeZone = "TimestampWithTimeZone"
 genFuncDef :: String -> SQLFunc -> String
 genFuncDef nm (SQLFunc {name, vars: {in: invars}, set}) =
     name 
-      <> " conn "
+      <> " cl "
       <> (if (length invars > 0) 
              then "{" <> (joinWith ", " (getInVarName <$> invars)) <> "}" 
              else "")
@@ -124,7 +124,7 @@ genFuncDef nm (SQLFunc {name, vars: {in: invars}, set}) =
       <> "(map run" <> nm <> ") <$> " 
       <> "query (Query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\") "
       <> "[" <> joinWith ", " ((\v -> "toSql " <> getInVarName v) <$> invars) <> "]"
-      <> " conn"
+      <> " cl"
         where
           getInVarName :: Var -> String
           getInVarName (Var (Just n) _     _    ) = n
