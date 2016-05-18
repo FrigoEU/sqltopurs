@@ -34,7 +34,7 @@ full ts fs = let withIndex = zip fs (range 0 (length fs - 1))
                                                    forn <- genForeign recname ts outvars
                                                    typedecl <- genTypeDecl ts s
                                                    let funcdef = genFuncDef recname s
-                                                   pure $ nt <> "\n" <> run <> "\n" <> forn <> "\n" <> typedecl <> "\n" <> funcdef <> "\n\n" ) 
+                                                   pure $ typedecl <> "\n" <> funcdef <> "\n" <> nt <> "\n" <> run <> "\n" <> forn <> "\n\n" ) 
                  line = (foldMap id <$> sequence lines) :: Exc String
               in toEither line
 
