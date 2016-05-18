@@ -19,8 +19,9 @@ header = joinWith "\n" [ "module MyApp.SQL where"
                        , "import Prelude ((<$>), return, bind, map, ($), (<*>), (>>=))"
                        , "import Database.Postgres (Client, DB, query, Query(Query), queryOne)"
                        , "import Control.Monad.Aff (Aff)"
-                       , "import Data.Maybe (Maybe(Nothing, Just))"
-                       , "import Data.Foreign (isNull)"
+                       , "import Data.Maybe (Maybe)"
+                       , "import Data.Foreign (F)"
+                       , "import Data.Foreign.Null (Null, runNull)"
                        , "import Database.Postgres.SqlValue (toSql)"
                        , "import Data.Foreign.Class (class IsForeign, readProp, read)"]
 
@@ -82,12 +83,10 @@ genReadProp nf@(NamedField {field: (SQLField {primarykey, notnull, type: t, newt
   let name = getFieldName nf
       noNewtypeNoNullable = "readProp \"" <> name <> "\" obj"
       noNewtypeNoNullableWithType =  noNewtypeNoNullable <> " :: F " <> typeToPurs t
-      noNewtypeWithNullableWithType = "(" <> noNewtypeNoNullableWithType <> ")" <> " >>= \\p -> if isNull p then return Nothing else Just <$> read p :: F (Maybe " <> typeToPurs t <> ")"
+      noNewtypeWithNullableWithType = "runNull <$> (" <> noNewtypeNoNullable <> " :: F (Null "<> typeToPurs t <>")" <>  ")"
       withNewTypeNoNullableWithType = \nts -> nts <> " <$> (" <> noNewtypeNoNullable <> " :: F " <> typeToPurs t <> ")"
-      withNewTypeWithNullableWithType = \nts -> "(" <> noNewtypeNoNullableWithType <> ")" <> " >>= \\p -> if isNull p then return Nothing else (Just <<< " <> nts <> ") <$> read p :: F (Maybe " <> nts <> ")"
+      withNewTypeWithNullableWithType = \nts -> "((map " <> nts <> ") <<< runNull) <$> (" <> noNewtypeNoNullable <> " :: F (Null "<> typeToPurs t <>")" <>  ")" -- To test!
       nullable = not (primarykey || notnull)
-      typeAnnotation = maybe (typeToPurs t) id nt
-      typeAnnWithMaybe = if nullable then "Maybe " <> typeAnnotation else typeAnnotation
    in "(" <> 
       (maybe 
         (if nullable then noNewtypeWithNullableWithType else noNewtypeNoNullableWithType)
