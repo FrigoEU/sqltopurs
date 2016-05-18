@@ -13,7 +13,7 @@ import Data.Tuple (Tuple(Tuple))
 import Prelude (class Monad, Unit, return, ($), bind, (<$>), unit, pure, (>>=), (<<<), (>), (&&), not, (/=), (==), (>>>))
 import SqlToPurs.Model (SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(TimestampWithTimeZone, TimestampWithoutTimeZone, SqlDate, UUID, Text, Int, Boolean, Numeric))
 import Text.Parsing.Parser (fail, ParserT, Parser)
-import Text.Parsing.Parser.Combinators (optional, choice, sepBy, manyTill, sepBy1, (<?>), try, between)
+import Text.Parsing.Parser.Combinators (option, sepBy, optionMaybe, optional, choice, manyTill, sepBy1, (<?>), try, between)
 import Text.Parsing.Parser.String (anyChar, string, whiteSpace, char, oneOf)
 import Text.Parsing.Parser.Token (alphaNum)
 
@@ -163,9 +163,10 @@ fieldP table = do
   whiteSpace
   t <- typeP
   optional whiteSpace
-  qualifiers <- foldMap toLower <$> sepBy (choice [string "primary key", string "PRIMARY KEY", string "not null", string "NOT NULL", string "unique", string "UNIQUE"]) (string " ")
+  qualifiers <- foldMap toLower <$> sepBy (option "" $ choice [string "primary key", string "PRIMARY KEY", string "not null", string "NOT NULL", string "unique", string "UNIQUE"]) (string " ")
   let primarykey = contains "primary key" qualifiers
   let notnull = contains "not null" qualifiers
   optional whiteSpace
-  return $ SQLField {name, table, "type": t, primarykey, notnull}
+  nt <- optionMaybe (string "/* newtype " *> word >>= (\w -> string " */" *> return w))
+  return $ SQLField {name, table, "type": t, primarykey, notnull, newtype: nt}
 

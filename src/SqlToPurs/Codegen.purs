@@ -9,7 +9,7 @@ import Data.Maybe (maybe, Maybe(Nothing, Just))
 import Data.String (toLower, joinWith)
 import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
-import Prelude (($), id, (<>), (<$>), (>), (||), pure, show, map, bind, (>>=), (==), flip, (-))
+import Prelude (not, ($), id, (<>), (<$>), (>), (||), pure, show, map, bind, (>>=), (==), flip, (-))
 import SqlToPurs.Model (NamedField(NamedField), OutParams(Separate, FullTable), SQLField(SQLField), SQLTable(SQLTable), Var(Var), SQLFunc(SQLFunc), Type(TimestampWithTimeZone, TimestampWithoutTimeZone, SqlDate, UUID, Text, Numeric, Boolean, Int))
 
 type Exc a = Eff (err :: EXCEPTION) a
@@ -33,7 +33,7 @@ full ts fs = let withIndex = zip fs (range 0 (length fs - 1))
                                                    run <- genRun recname ts outvars
                                                    forn <- genForeign recname ts outvars
                                                    typedecl <- genTypeDecl ts s
-                                                   let funcdef = genFuncDef recname s
+                                                   let funcdef = genFuncDef ts recname s
                                                    pure $ typedecl <> "\n" <> funcdef <> "\n" <> nt <> "\n" <> run <> "\n" <> forn <> "\n\n" ) 
                  line = (foldMap id <$> sequence lines) :: Exc String
               in toEither line
@@ -78,9 +78,22 @@ genForeign nm ts outp = do
           <> nm <> " <$> " <> "(" <> objSugar <> " <$> " <> (joinWith " <*> " (map genReadProp fields)) <> ")"
 
 genReadProp :: NamedField -> String
-genReadProp nf@(NamedField {field: (SQLField {primarykey, notnull})}) = 
-  "(readProp \"" <> name <> "\" obj" <> (if primarykey || notnull then "" else " >>= \\p -> if isNull p then return Nothing else Just <$> read p") <> ")"
-    where name = getFieldName nf
+genReadProp nf@(NamedField {field: (SQLField {primarykey, notnull, type: t, newtype: nt})}) = 
+  let name = getFieldName nf
+      noNewtypeNoNullable = "readProp \"" <> name <> "\" obj"
+      noNewtypeNoNullableWithType =  noNewtypeNoNullable <> " :: F " <> typeToPurs t
+      noNewtypeWithNullableWithType = "(" <> noNewtypeNoNullableWithType <> ")" <> " >>= \\p -> if isNull p then return Nothing else Just <$> read p :: F (Maybe " <> typeToPurs t <> ")"
+      withNewTypeNoNullableWithType = \nts -> nts <> " <$> (" <> noNewtypeNoNullable <> " :: F " <> typeToPurs t <> ")"
+      withNewTypeWithNullableWithType = \nts -> "(" <> noNewtypeNoNullableWithType <> ")" <> " >>= \\p -> if isNull p then return Nothing else (Just <<< " <> nts <> ") <$> read p :: F (Maybe " <> nts <> ")"
+      nullable = not (primarykey || notnull)
+      typeAnnotation = maybe (typeToPurs t) id nt
+      typeAnnWithMaybe = if nullable then "Maybe " <> typeAnnotation else typeAnnotation
+   in "(" <> 
+      (maybe 
+        (if nullable then noNewtypeWithNullableWithType else noNewtypeNoNullableWithType)
+        (\nts -> if nullable then withNewTypeWithNullableWithType nts else withNewTypeNoNullableWithType nts)
+        nt) <>
+      ")"
 
 outParamsToNamedFields :: Array SQLTable -> OutParams -> Exc (Array NamedField)
 outParamsToNamedFields ts (FullTable tableN) = maybe (throw $ "Table " <> tableN <> "not found!") pure (tableToNamedFields ts tableN)
@@ -97,8 +110,8 @@ namedFieldsToRecord [] = ""
 namedFieldsToRecord fs = "{" <> joinWith ", " (namedFieldToPurs <$> fs) <> "}" 
 
 namedFieldToPurs :: NamedField -> String
-namedFieldToPurs nf@(NamedField {field: (SQLField {type: t, primarykey, notnull})}) = 
-  name <> " :: " <> (if primarykey || notnull then "" else "Maybe ") <> typeToPurs t
+namedFieldToPurs nf@(NamedField {field: (SQLField {type: t, primarykey, notnull, newtype: nt})}) = 
+  name <> " :: " <> (if primarykey || notnull then "" else "Maybe ") <> (maybe (typeToPurs t) id nt)
     where
       name = getFieldName nf
 
@@ -113,12 +126,12 @@ typeToPurs TimestampWithoutTimeZone = "TimestampWithoutTimeZone"
 typeToPurs TimestampWithTimeZone = "TimestampWithTimeZone"
 
 
-genFuncDef :: String -> SQLFunc -> String
-genFuncDef nm (SQLFunc {name, vars: {in: invars}, set}) =
+genFuncDef :: Array SQLTable -> String -> SQLFunc -> String
+genFuncDef ts nm (SQLFunc {name, vars: {in: invars}, set}) =
     name 
       <> " cl "
       <> (if (length invars > 0) 
-             then "{" <> (joinWith ", " (getInVarName <$> invars)) <> "}" 
+             then "{" <> (joinWith ", " (writeInVar <$> invars)) <> "}" 
              else "")
       <> " = "
       <> "(map run" <> nm <> ") <$> " 
@@ -127,6 +140,12 @@ genFuncDef nm (SQLFunc {name, vars: {in: invars}, set}) =
       <> "[" <> joinWith ", " ((\v -> "toSql " <> getInVarName v) <$> invars) <> "]"
       <> " cl"
         where
+          writeInVar :: Var -> String
+          writeInVar v = let nf  = varToNamedField ts v
+                             invarname = getInVarName v
+                          in case nf of
+                                  Nothing -> ""
+                                  (Just (NamedField {field: (SQLField {newtype: nt})})) -> maybe invarname (\nts -> (invarname <> ": " <> "(" <> nts <> " " <>  invarname <> ")")) nt
           getInVarName :: Var -> String
           getInVarName (Var (Just n) _     _    ) = n
           getInVarName (Var Nothing  table field) = table <> "_" <> field

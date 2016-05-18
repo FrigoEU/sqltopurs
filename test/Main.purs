@@ -26,7 +26,7 @@ sql = joinWith "\n" [ "blablablablababla;"
                     , ""
 
                     , "create table posts ("
-                    , "  id uuid PRIMARY KEY,"
+                    , "  id uuid PRIMARY KEY/* newtype PostId */,"
                     , "  activityId uuid UNIQUE NOT NULL, -- ignore 'unique' test"
                     , "  datePoint date, --comment test"
                     , "  anumber numeric(2,2) NOT NULL"
@@ -50,14 +50,14 @@ sql = joinWith "\n" [ "blablablablababla;"
 
 activities :: SQLTable
 activities = SQLTable { name: "activities"
-                      , fields: [ SQLField {name: "id", table: "activities", type: UUID, primarykey: true, notnull: false }
-                                , SQLField {name: "description", table: "activities", type: Text, primarykey: false, notnull: true }]}
+                      , fields: [ SQLField {name: "id", table: "activities", type: UUID, primarykey: true, notnull: false, newtype: Nothing }
+                                , SQLField {name: "description", table: "activities", type: Text, primarykey: false, notnull: true, newtype: Nothing }]}
 posts :: SQLTable
 posts = SQLTable { name: "posts"
-                 , fields: [ SQLField {name: "id", table: "posts", type: UUID, primarykey: true, notnull: false }
-                           , SQLField {name: "activityId", table: "posts", type: UUID, primarykey: false, notnull: true }
-                           , SQLField {name: "datePoint", table: "posts", type: SqlDate, primarykey: false, notnull: false }
-                           , SQLField {name: "anumber", table: "posts", type: Numeric, primarykey: false, notnull: true }]}
+                 , fields: [ SQLField {name: "id", table: "posts", type: UUID, primarykey: true, notnull: false, newtype: Just "PostId"}
+                           , SQLField {name: "activityId", table: "posts", type: UUID, primarykey: false, notnull: true, newtype: Nothing}
+                           , SQLField {name: "datePoint", table: "posts", type: SqlDate, primarykey: false, notnull: false, newtype: Nothing }
+                           , SQLField {name: "anumber", table: "posts", type: Numeric, primarykey: false, notnull: true, newtype: Nothing }]}
 
 f1 :: SQLFunc
 f1 = SQLFunc { name: "myfunc"
@@ -97,22 +97,22 @@ codegentest = describe "codegen" do
   it "should generate a type declaration for SQLFunc ADT" do
     shouldEqual (toEither $ genTypeDecl [activities, posts] f1) $ Right "myfunc :: forall eff. Client -> {myinvar :: UUID} -> Aff (db :: DB | eff) (Array {id :: UUID, description :: String})"
     shouldEqual (toEither $ genTypeDecl [activities, posts] f2) $
-      Right "myfunc2 :: forall eff. Client -> {myinvar :: UUID} -> Aff (db :: DB | eff) (Maybe {id :: UUID, activityId :: UUID, datePoint :: Maybe SqlDate, anumber :: Number})"
+      Right "myfunc2 :: forall eff. Client -> {myinvar :: PostId} -> Aff (db :: DB | eff) (Maybe {id :: PostId, activityId :: UUID, datePoint :: Maybe SqlDate, anumber :: Number})"
 
   it "should generate a function definition" do
-    shouldEqual (genFuncDef "Res1" f1) ("myfunc cl {myinvar} = (map runRes1) <$> query (Query \"select * from myfunc(?)\") [toSql myinvar] cl")
-    shouldEqual (genFuncDef "Res2" f2) ("myfunc2 cl {myinvar} = (map runRes2) <$> queryOne (Query \"select * from myfunc2(?)\") [toSql myinvar] cl")
+    shouldEqual (genFuncDef [activities, posts] "Res1" f1) ("myfunc cl {myinvar} = (map runRes1) <$> query (Query \"select * from myfunc(?)\") [toSql myinvar] cl")
+    shouldEqual (genFuncDef [activities, posts] "Res2" f2) ("myfunc2 cl {myinvar: (PostId myinvar)} = (map runRes2) <$> queryOne (Query \"select * from myfunc2(?)\") [toSql myinvar] cl")
 
   it "should generate a newtype" do
     shouldEqual (toEither $ genNewType "Res1" [activities, posts] (getOutVars f1)) (Right "newtype Res1 = Res1 {id :: UUID, description :: String}")
-    shouldEqual (toEither $ genNewType "Res2" [activities, posts] (getOutVars f2)) (Right "newtype Res2 = Res2 {id :: UUID, activityId :: UUID, datePoint :: Maybe SqlDate, anumber :: Number}")
+    shouldEqual (toEither $ genNewType "Res2" [activities, posts] (getOutVars f2)) (Right "newtype Res2 = Res2 {id :: PostId, activityId :: UUID, datePoint :: Maybe SqlDate, anumber :: Number}")
 
   it "should generate a run function" do
     shouldEqual (toEither $ genRun "Res1" [activities, posts] (getOutVars f1)) ( Right $ joinWith "\n" [ "runRes1 :: Res1 -> {id :: UUID, description :: String}"
                                                                                                             , "runRes1 (Res1 a) = a"])
 
   it "should generate a foreign instance" do
-    shouldEqual (toEither $ genForeign "Res2" [activities, posts] (getOutVars f2)) (Right "instance isForeignRes2 :: IsForeign Res2 where read obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _} <$> (readProp \"id\" obj) <*> (readProp \"activityId\" obj) <*> (readProp \"datePoint\" obj >>= \\p -> if isNull p then return Nothing else Just <$> read p) <*> (readProp \"anumber\" obj))")
+    shouldEqual (toEither $ genForeign "Res2" [activities, posts] (getOutVars f2)) (Right "instance isForeignRes2 :: IsForeign Res2 where read obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _} <$> (PostId <$> (readProp \"id\" obj :: F UUID)) <*> (readProp \"activityId\" obj :: F UUID) <*> ((readProp \"datePoint\" obj :: F SqlDate) >>= \\p -> if isNull p then return Nothing else Just <$> read p :: F (Maybe SqlDate)) <*> (readProp \"anumber\" obj :: F Number))")
 
 getOutVars :: SQLFunc -> OutParams
 getOutVars (SQLFunc {vars: {out}}) = out

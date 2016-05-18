@@ -9,7 +9,7 @@ data OutParams = FullTable String
                | Separate (Array Var)
 data Var = Var (Maybe String) String String
 newtype SQLFunc = SQLFunc {name :: String, vars :: {in :: Array Var, out :: OutParams}, set :: Boolean}
-newtype SQLField = SQLField {name :: String, table :: String, type :: Type, primarykey :: Boolean, notnull :: Boolean}
+newtype SQLField = SQLField {name :: String, table :: String, type :: Type, primarykey :: Boolean, notnull :: Boolean, newtype :: Maybe String}
 newtype SQLTable = SQLTable {name :: String, fields :: Array SQLField}
 newtype NamedField = NamedField {name :: Maybe String, field :: SQLField}
 
