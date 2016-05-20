@@ -16,14 +16,14 @@ type Exc a = Eff (err :: EXCEPTION) a
 
 header :: String
 header = joinWith "\n" [ "module MyApp.SQL where"
-                       , "import Prelude ((<$>), return, bind, map, ($), (<*>), (>>=))"
+                       , "import Prelude ((<$>), map, (<*>))"
                        , "import Database.Postgres (Client, DB, query, Query(Query), queryOne)"
                        , "import Control.Monad.Aff (Aff)"
                        , "import Data.Maybe (Maybe)"
                        , "import Data.Foreign (F)"
                        , "import Data.Foreign.Null (Null, runNull)"
                        , "import Database.Postgres.SqlValue (toSql)"
-                       , "import Data.Foreign.Class (class IsForeign, readProp, read)"]
+                       , "import Data.Foreign.Class (class IsForeign, readProp)"]
 
 full :: Array SQLTable -> Array SQLFunc -> Either String String
 full ts fs = let withIndex = zip fs (range 0 (length fs - 1))
@@ -59,9 +59,9 @@ genTypeDecl ts (SQLFunc {name, vars: {in: invars, out: outvars}, set}) = do
   outrec <- outParamsToRecord ts outvars
   infields <- varsToNamedFields ts invars
   pure $ name 
-         <> " :: forall eff. Client -> " 
-         <> namedFieldsToRecord infields
-         <> (if (length infields > 0) then " -> " else "")
+         <> " :: forall eff " <> (if length infields > 0 then "obj" else "") <>". Client -> " 
+         <> namedFieldsToRecord (Just "obj") infields
+         <> (if length infields > 0 then " -> " else "")
          <> "Aff (db :: DB | eff) "
          <> "(" <> (if set then "Array " else "Maybe ") <> outrec <> ")" -- queryOne returns Maybe
 
@@ -102,11 +102,11 @@ varsToNamedFields :: Array SQLTable -> Array Var -> Exc (Array NamedField)
 varsToNamedFields ts vars = traverse (\v -> maybe (throw $ show v <> "not found!") pure $ varToNamedField ts v) vars
 
 outParamsToRecord :: Array SQLTable -> OutParams -> Exc String
-outParamsToRecord ts outp = namedFieldsToRecord <$> (outParamsToNamedFields ts outp)
+outParamsToRecord ts outp = namedFieldsToRecord Nothing <$> (outParamsToNamedFields ts outp)
 
-namedFieldsToRecord :: Array NamedField -> String
-namedFieldsToRecord [] = ""
-namedFieldsToRecord fs = "{" <> joinWith ", " (namedFieldToPurs <$> fs) <> "}" 
+namedFieldsToRecord :: Maybe String -> Array NamedField -> String
+namedFieldsToRecord _   [] = ""
+namedFieldsToRecord ext fs = "{" <> joinWith ", " (namedFieldToPurs <$> fs) <> (maybe "" (\obj -> " | " <> obj) ext) <> "}" 
 
 namedFieldToPurs :: NamedField -> String
 namedFieldToPurs nf@(NamedField {field: (SQLField {type: t, primarykey, notnull, newtype: nt})}) = 
