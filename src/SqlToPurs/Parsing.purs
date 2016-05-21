@@ -2,11 +2,10 @@ module SqlToPurs.Parsing where
 
 import Control.Alt ((<|>))
 import Control.Apply ((*>))
-import Control.Bind (join)
 import Data.Array (many, snoc, length, filter, some)
 import Data.Foldable (foldMap, foldl)
 import Data.List (toUnfoldable)
-import Data.Maybe (maybe, Maybe(Nothing, Just), isJust)
+import Data.Maybe (isNothing, maybe, Maybe(Nothing, Just), isJust)
 import Data.Monoid (mempty)
 import Data.String (fromCharArray, contains, toLower)
 import Data.Tuple (Tuple(Tuple))
@@ -61,8 +60,7 @@ varsP = betweenBrackets $ toUnfoldable <$> (sepBy varAndDirP (optional whiteSpac
 
 returnsP :: Parser String (Maybe (Tuple Boolean String))
 returnsP = (try >>> maybeP)
-       ( do string "RETURNS " <|> string "returns "
-            string "SETOF " <|> string "setof "
+       ( do string "RETURNS SETOF " <|> string "returns setof "
             str <- word
             return (Tuple true str)
          <|>
@@ -84,11 +82,13 @@ functionP = do
   returns <- returnsP
   let set = maybe false (\(Tuple b _) -> b) returns
   let returnsRecord = maybe false (\(Tuple _ str) -> str == "record") returns
-  let returnsFullTable = join $ (\(Tuple _ str) -> if (str /= "record") then Just str else Nothing) <$> returns
+  let returnsFullTable = returns >>= (\(Tuple _ str) -> if (str /= "record") then Just str else Nothing)
   let invars  = runVar <$> filter isIn vars
   let outvars = runVar <$> filter (not isIn) vars
   if (isJust returnsFullTable && length outvars > 0) then fail "Can't have both return table and out vars"
                                                      else return unit
+  if (isNothing returnsFullTable && length outvars == 0) then fail "Function is not returning anything"
+                                                         else return unit
   return $ SQLFunc {name, vars: {in: invars, out: maybe (Separate outvars) FullTable returnsFullTable }, set}
     where 
       isIn :: Tuple Dir Var -> Boolean
