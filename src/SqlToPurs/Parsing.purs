@@ -11,7 +11,7 @@ import Data.String (fromCharArray, contains, toLower)
 import Data.Tuple (Tuple(Tuple))
 import Prelude (class Monad, Unit, return, ($), bind, (<$>), unit, pure, (>>=), (<<<), (>), (&&), not, (/=), (==), (>>>))
 import SqlToPurs.Model (SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(TimestampWithTimeZone, TimestampWithoutTimeZone, SqlDate, UUID, Text, Int, Boolean, Numeric))
-import Text.Parsing.Parser (fail, ParserT, Parser)
+import Text.Parsing.Parser (ParserT, fail)
 import Text.Parsing.Parser.Combinators (option, sepBy, optionMaybe, optional, choice, manyTill, sepBy1, (<?>), try, between)
 import Text.Parsing.Parser.String (anyChar, string, whiteSpace, char, oneOf)
 import Text.Parsing.Parser.Token (alphaNum)
@@ -21,18 +21,18 @@ data Dir = In | Out
 some' :: forall m. (Monad m) => ParserT String m Char -> ParserT String m String
 some' p = fromCharArray <$> some p
 
-dirP :: Parser String Dir
+dirP :: forall m. (Monad m) => ParserT String m Dir
 dirP = (string "IN" >>= \_ -> return In)
       <|> (string "OUT" >>= \_ -> return Out)
       <?> "IN or OUT"
 
-word :: Parser String String
+word :: forall m. (Monad m) => ParserT String m String
 word = some' alphaNum <?> "Variable Name"
 
 betweenBrackets :: forall a m. (Monad m) => ParserT String m a -> ParserT String m a
 betweenBrackets = between (string "(") (string ")")
 
-varP :: Parser String Var
+varP :: forall m. (Monad m) => ParserT String m Var
 varP = try do name <- word
               whiteSpace
               tablename <- word
@@ -48,17 +48,17 @@ varP = try do name <- word
           string "%TYPE"
           return $ Var Nothing tablename fieldname
 
-varAndDirP :: Parser String (Tuple Dir Var)
+varAndDirP :: forall m. (Monad m) => ParserT String m (Tuple Dir Var)
 varAndDirP = do
   dir <- dirP
   whiteSpace
   var <- varP
   return $ Tuple dir var
 
-varsP :: Parser String (Array (Tuple Dir Var))
+varsP :: forall m. (Monad m) => ParserT String m (Array (Tuple Dir Var))
 varsP = betweenBrackets $ toUnfoldable <$> (sepBy varAndDirP (optional whiteSpace *> char ',' *> optional whiteSpace))
 
-returnsP :: Parser String (Maybe (Tuple Boolean String))
+returnsP :: forall m. (Monad m) => ParserT String m (Maybe (Tuple Boolean String))
 returnsP = (try >>> maybeP)
        ( do string "RETURNS SETOF " <|> string "returns setof "
             str <- word
@@ -69,10 +69,10 @@ returnsP = (try >>> maybeP)
             return (Tuple false str))
 
 
-createFunctionP :: Parser String String
+createFunctionP :: forall m. (Monad m) => ParserT String m String
 createFunctionP = (string "CREATE FUNCTION " <|> string "create function ") 
 
-functionP :: Parser String SQLFunc
+functionP :: forall m. (Monad m) => ParserT String m SQLFunc
 functionP = do 
   createFunctionP
   name <- word
@@ -98,7 +98,7 @@ functionP = do
       runVar (Tuple _ v) = v
 
 
-functionsP :: Parser String (Array SQLFunc)
+functionsP :: forall m. (Monad m) => ParserT String m (Array SQLFunc)
 functionsP = manyMaybe functionP
 
 manyMaybe :: forall m a. (Monad m) => ParserT String m a -> ParserT String m (Array a)
@@ -114,10 +114,10 @@ maybeP p = (p >>= return <<< Just) <|> (anyChar >>= \_ -> return Nothing)
 
 ---------------
 
-digit :: Parser String Char
+digit :: forall m. (Monad m) => ParserT String m Char
 digit = oneOf ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] <?> "digit"
 
-typeP :: Parser String Type
+typeP :: forall m. (Monad m) => ParserT String m Type
 typeP = (string "boolean" >>= \_ -> return Boolean) 
         <|> (string "int" >>= \_ -> return Int)
         <|> (string "text" >>= \_ -> return Text)
@@ -135,14 +135,14 @@ typeP = (string "boolean" >>= \_ -> return Boolean)
                         some' digit
                       return Numeric
 
-createTableP :: Parser String String
+createTableP :: forall m. (Monad m) => ParserT String m String
 createTableP = do (string "create table " <|> string "create table ")
                   word
 
-schemaP :: Parser String (Array SQLTable)
+schemaP :: forall m. (Monad m) => ParserT String m (Array SQLTable)
 schemaP = manyMaybe tableP
 
-tableP :: Parser String SQLTable
+tableP :: forall m. (Monad m) => ParserT String m SQLTable
 tableP = do
   name <- createTableP
   whiteSpace
@@ -154,10 +154,10 @@ tableP = do
   optional (string ";")
   return $ SQLTable {name, fields}
 
-commentP :: Parser String Unit
+commentP :: forall m. (Monad m) => ParserT String m Unit
 commentP = string "--" *> manyTill anyChar (string "\n") *> pure unit
 
-fieldP :: String -> Parser String SQLField
+fieldP :: forall m. (Monad m) => String -> ParserT String m SQLField
 fieldP table = do
   name <- word
   whiteSpace
