@@ -4,7 +4,7 @@ import Data.Generic (gEq, gShow, class Generic)
 import Data.Maybe (Maybe)
 import Prelude (show, class Show, class Eq, (<>))
 
-data Type = Int | Boolean | Numeric | UUID | Text | SqlDate | TimestampWithoutTimeZone | TimestampWithTimeZone
+data Type = Int | Boolean | Numeric | UUID | Text | SqlDate | TimestampWithoutTimeZone | TimestampWithTimeZone | SqlTime
 data OutParams = FullTable String
                | Separate (Array Var)
 data Var = Var (Maybe String) String String

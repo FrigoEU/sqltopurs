@@ -12,19 +12,15 @@
     "output"
   ],
   "dependencies": {
-    "purescript-console": "0.1.1",
-    "purescript-generics": "0.7.2",
-    "purescript-node-fs-aff": "0.6.0",
-    "purescript-parsing": "0.8.0",
-    "purescript-yargs": "0.7.3",
-    "purescript-free": "0.9.1"
+    "purescript-console": "1.0.0",
+    "purescript-generics": "1.0.0",
+    "purescript-node-fs-aff": "1.0.0",
+    "purescript-parsing": "1.0.0",
+    "purescript-yargs": "1.0.0",
+    "purescript-free": "1.0.0"
   },
   "devDependencies": {
-    "purescript-spec": "~0.7.2",
-    "purescript-debug": "*"
-  },
-  "resolutions": {
-    "purescript-node-fs": "~0.11.0",
-    "purescript-node-streams": "~0.4.0"
+    "purescript-spec": "0.8.0",
+    "purescript-debug": "1.0.0"
   }
 }

@@ -5,7 +5,7 @@ import Data.Either (Either(Right), either)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(Nothing, Just))
 import Data.String (joinWith)
-import Prelude (show, bind, (<>), ($), unit, return)
+import Prelude (show, bind, (<>), ($), unit, pure)
 import SqlToPurs.Codegen (toEither, genForeign, genRun, genNewType, genFuncDef, genTypeDecl)
 import SqlToPurs.Model (SQLField(SQLField), OutParams(Separate, FullTable), Var(Var), SQLTable(SQLTable), SQLFunc(SQLFunc), Type(Numeric, SqlDate, Text, UUID))
 import SqlToPurs.Parsing (schemaP, functionsP)
@@ -15,7 +15,7 @@ import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (run)
 import Text.Parsing.Parser (runParser)
 
-main = run [consoleReporter] $ foldl (*>) (return unit) [parsingtest, schemaparsingtest, codegentest]
+main = run [consoleReporter] $ foldl (*>) (pure unit) [parsingtest, schemaparsingtest, codegentest]
 
 sql :: String
 sql = joinWith "\n" [ "blablablablababla;"
@@ -83,9 +83,9 @@ parsingtest = describe "function parsing" do
            $ runParser "CREATE FUNCTION queryAllActivities () RETURNS SETOF activities AS $$ SELECT * from activities; $$ LANGUAGE SQL; " functionsP
 
 
-{-- parsingtest = return unit --}
-{-- schemaparsingtest = return unit --}
-{-- codegentest = return unit --}
+{-- parsingtest = pure unit --}
+{-- schemaparsingtest = pure unit --}
+{-- codegentest = pure unit --}
 
 schemaparsingtest = describe "create table parsing" do
   it "should parse the create table statements correctly" do

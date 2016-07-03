@@ -9,8 +9,8 @@ import Data.Maybe (isNothing, maybe, Maybe(Nothing, Just), isJust)
 import Data.Monoid (mempty)
 import Data.String (fromCharArray, contains, toLower)
 import Data.Tuple (Tuple(Tuple))
-import Prelude (class Monad, Unit, return, ($), bind, (<$>), unit, pure, (>>=), (<<<), (>), (&&), not, (/=), (==), (>>>))
-import SqlToPurs.Model (SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(TimestampWithTimeZone, TimestampWithoutTimeZone, SqlDate, UUID, Text, Int, Boolean, Numeric))
+import Prelude (class Monad, Unit, ($), bind, (<$>), unit, pure, (>>=), (<<<), (>), (&&), not, (/=), (==), (>>>))
+import SqlToPurs.Model (SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(SqlTime, TimestampWithTimeZone, TimestampWithoutTimeZone, SqlDate, UUID, Text, Int, Boolean, Numeric))
 import Text.Parsing.Parser (ParserT, fail)
 import Text.Parsing.Parser.Combinators (option, sepBy, optionMaybe, optional, choice, manyTill, sepBy1, (<?>), try, between)
 import Text.Parsing.Parser.String (anyChar, string, whiteSpace, char, oneOf)
@@ -22,8 +22,8 @@ some' :: forall m. (Monad m) => ParserT String m Char -> ParserT String m String
 some' p = fromCharArray <$> some p
 
 dirP :: forall m. (Monad m) => ParserT String m Dir
-dirP = (string "IN" >>= \_ -> return In)
-      <|> (string "OUT" >>= \_ -> return Out)
+dirP = (string "IN" >>= \_ -> pure In)
+      <|> (string "OUT" >>= \_ -> pure Out)
       <?> "IN or OUT"
 
 word :: forall m. (Monad m) => ParserT String m String
@@ -39,21 +39,21 @@ varP = try do name <- word
               char '.'
               fieldname <- word
               string "%TYPE"
-              return $ Var (Just name) tablename fieldname
+              pure $ Var (Just name) tablename fieldname
        <|>
        do 
           tablename <- word
           char '.'
           fieldname <- word
           string "%TYPE"
-          return $ Var Nothing tablename fieldname
+          pure $ Var Nothing tablename fieldname
 
 varAndDirP :: forall m. (Monad m) => ParserT String m (Tuple Dir Var)
 varAndDirP = do
   dir <- dirP
   whiteSpace
   var <- varP
-  return $ Tuple dir var
+  pure $ Tuple dir var
 
 varsP :: forall m. (Monad m) => ParserT String m (Array (Tuple Dir Var))
 varsP = betweenBrackets $ toUnfoldable <$> (sepBy varAndDirP (optional whiteSpace *> char ',' *> optional whiteSpace))
@@ -62,11 +62,11 @@ returnsP :: forall m. (Monad m) => ParserT String m (Maybe (Tuple Boolean String
 returnsP = (try >>> maybeP)
        ( do string "RETURNS SETOF " <|> string "returns setof "
             str <- word
-            return (Tuple true str)
+            pure (Tuple true str)
          <|>
          do string "RETURNS " <|> string "returns "
             str <- word
-            return (Tuple false str))
+            pure (Tuple false str))
 
 
 createFunctionP :: forall m. (Monad m) => ParserT String m String
@@ -85,11 +85,12 @@ functionP = do
   let returnsFullTable = returns >>= (\(Tuple _ str) -> if (str /= "record") then Just str else Nothing)
   let invars  = runVar <$> filter isIn vars
   let outvars = runVar <$> filter (not isIn) vars
-  if (isJust returnsFullTable && length outvars > 0) then fail "Can't have both return table and out vars"
-                                                     else return unit
-  if (isNothing returnsFullTable && length outvars == 0) then fail "Function is not returning anything"
-                                                         else return unit
-  return $ SQLFunc {name, vars: {in: invars, out: maybe (Separate outvars) FullTable returnsFullTable }, set}
+  if (isJust returnsFullTable && length outvars > 0) then fail "Can't have both pure table and out vars"
+                                                     else pure unit
+  out <- if isNothing returnsFullTable && length outvars == 0 
+            then fail "Function is not returning anything, not supported. If deleting, just pure the id"
+            else pure $ maybe (Separate outvars) FullTable returnsFullTable 
+  pure $ SQLFunc {name, vars: {in: invars, out}, set}
     where 
       isIn :: Tuple Dir Var -> Boolean
       isIn (Tuple In v) = true
@@ -110,7 +111,7 @@ manyMaybe p = foldl f mempty <$> many (maybeP p)
 
 
 maybeP :: forall m a. (Monad m) => ParserT String m a -> ParserT String m (Maybe a)
-maybeP p = (p >>= return <<< Just) <|> (anyChar >>= \_ -> return Nothing)
+maybeP p = (p >>= pure <<< Just) <|> (anyChar >>= \_ -> pure Nothing)
 
 ---------------
 
@@ -118,13 +119,14 @@ digit :: forall m. (Monad m) => ParserT String m Char
 digit = oneOf ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'] <?> "digit"
 
 typeP :: forall m. (Monad m) => ParserT String m Type
-typeP = (string "boolean" >>= \_ -> return Boolean) 
-        <|> (string "int" >>= \_ -> return Int)
-        <|> (string "text" >>= \_ -> return Text)
-        <|> (string "uuid" >>= \_ -> return UUID)
-        <|> (string "date" >>= \_ -> return SqlDate)
-        <|> (string "timestamp without time zone" >>= \_ -> return TimestampWithoutTimeZone)
-        <|> (string "timestamp with time zone" >>= \_ -> return TimestampWithTimeZone)
+typeP = (string "boolean" >>= \_ -> pure Boolean) 
+        <|> (string "int" >>= \_ -> pure Int)
+        <|> (string "text" >>= \_ -> pure Text)
+        <|> (string "uuid" >>= \_ -> pure UUID)
+        <|> (string "date" >>= \_ -> pure SqlDate)
+        <|> (string "time" >>= \_ -> pure SqlTime)
+        <|> (string "timestamp without time zone" >>= \_ -> pure TimestampWithoutTimeZone)
+        <|> (string "timestamp with time zone" >>= \_ -> pure TimestampWithTimeZone)
         <|> numericP
         <?> "int, boolean, text, uuid, numeric(x,x), date, timestamp with time zone or timestamp without time zone"
   where numericP = do string "numeric"
@@ -133,7 +135,7 @@ typeP = (string "boolean" >>= \_ -> return Boolean)
                         some' digit
                         char ','
                         some' digit
-                      return Numeric
+                      pure Numeric
 
 createTableP :: forall m. (Monad m) => ParserT String m String
 createTableP = do (string "create table " <|> string "create table ")
@@ -152,7 +154,7 @@ tableP = do
   optional whiteSpace
   string ")"
   optional (string ";")
-  return $ SQLTable {name, fields}
+  pure $ SQLTable {name, fields}
 
 commentP :: forall m. (Monad m) => ParserT String m Unit
 commentP = string "--" *> manyTill anyChar (string "\n") *> pure unit
@@ -167,6 +169,6 @@ fieldP table = do
   let primarykey = contains "primary key" qualifiers
   let notnull = contains "not null" qualifiers
   optional whiteSpace
-  nt <- optionMaybe (string "/* newtype " *> word >>= (\w -> string " */" *> return w))
-  return $ SQLField {name, table, "type": t, primarykey, notnull, newtype: nt}
+  nt <- optionMaybe (string "/* newtype " *> word >>= (\w -> string " */" *> pure w))
+  pure $ SQLField {name, table, "type": t, primarykey, notnull, newtype: nt}
 

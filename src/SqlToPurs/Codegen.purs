@@ -2,15 +2,16 @@ module SqlToPurs.Codegen where
 
 import Control.Monad.Eff (runPure, Eff)
 import Control.Monad.Eff.Exception (EXCEPTION, throw, message, catchException)
-import Data.Array (range, zip, length, replicate)
+import Data.Array (range, zip, length)
 import Data.Either (Either(Left, Right))
 import Data.Foldable (find, foldMap)
 import Data.Maybe (maybe, Maybe(Nothing, Just))
 import Data.String (toLower, joinWith)
 import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
+import Data.Unfoldable (replicate)
 import Prelude (not, ($), id, (<>), (<$>), (>), (||), pure, show, map, bind, (>>=), (==), flip, (-))
-import SqlToPurs.Model (NamedField(NamedField), OutParams(Separate, FullTable), SQLField(SQLField), SQLTable(SQLTable), Var(Var), SQLFunc(SQLFunc), Type(TimestampWithTimeZone, TimestampWithoutTimeZone, SqlDate, UUID, Text, Numeric, Boolean, Int))
+import SqlToPurs.Model (NamedField(NamedField), OutParams(Separate, FullTable), SQLField(SQLField), SQLTable(SQLTable), Var(Var), SQLFunc(SQLFunc), Type(SqlTime, TimestampWithTimeZone, TimestampWithoutTimeZone, SqlDate, UUID, Text, Numeric, Boolean, Int))
 
 type Exc a = Eff (err :: EXCEPTION) a
 
@@ -123,6 +124,7 @@ typeToPurs UUID = "UUID"
 typeToPurs SqlDate = "SqlDate"
 typeToPurs TimestampWithoutTimeZone = "TimestampWithoutTimeZone"
 typeToPurs TimestampWithTimeZone = "TimestampWithTimeZone"
+typeToPurs SqlTime = "SqlTime"
 
 
 genFuncDef :: Array SQLTable -> String -> SQLFunc -> String
