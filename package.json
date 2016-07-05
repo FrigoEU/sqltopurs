@@ -1,6 +1,6 @@
 {
   "name": "sqltopurs",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "author": "Simon Van Casteren",
   "bin": {
     "sqltopurs": "index.js"
@@ -14,11 +14,18 @@
   "dependencies": {
     "yargs": "^4.1.0"
   },
+  "devDependencies": {
+    "pg": "6.0.1"
+  },
   "scripts": {
     "build": "pulp build && npm run compile",
     "compile": "psc-bundle output/**/{index,foreign}.js --main Main --module Main --output sqltopurs.js",
-    "test": "pulp test",
-    "e2e": "npm run build && node sqltopurs.js -i test.sql -e extra.purs -o test.purs",
-    "prepublish": "npm run build && npm run test"
+    "test": "npm run build && npm run querytestsql && pulp test",
+    "prepublish": "npm run build && npm run test",
+
+    "schema": "/Applications/Postgres.app/Contents/Versions/9.4/bin/psql sqltopurstest < test.sql",
+    "testsql": "node sqltopurs.js -i test.sql -o test/Schema.purs -e extra.purs",
+    "querytestsql": "npm run schema && npm run testsql",
+    "test-debug": "node-nightly --inspect --debug-brk test.js"
   }
 }

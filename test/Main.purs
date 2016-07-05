@@ -1,13 +1,17 @@
 module Test.Main where
 
 import Control.Apply ((*>))
+import Data.Bounded (top, bottom)
+import Data.DateTime (DateTime(DateTime))
 import Data.Either (Either(Right), either)
 import Data.Foldable (foldl)
-import Data.Maybe (Maybe(Nothing, Just))
+import Data.Maybe (maybe, Maybe(Nothing, Just))
 import Data.String (joinWith)
+import Database.Postgres (withClient, ConnectionInfo)
+import MyApp.SQL (querytest, inserttest)
 import Prelude (show, bind, (<>), ($), unit, pure)
 import SqlToPurs.Codegen (toEither, genForeign, genRun, genNewType, genFuncDef, genTypeDecl)
-import SqlToPurs.Model (SQLField(SQLField), OutParams(Separate, FullTable), Var(Var), SQLTable(SQLTable), SQLFunc(SQLFunc), Type(Numeric, SqlDate, Text, UUID))
+import SqlToPurs.Model (SQLField(SQLField), OutParams(Separate, FullTable), Var(Var), SQLTable(SQLTable), SQLFunc(SQLFunc), Type(Numeric, Date, Text, UUID))
 import SqlToPurs.Parsing (schemaP, functionsP)
 import Test.Spec (it, describe)
 import Test.Spec.Assertions (shouldEqual, fail)
@@ -15,7 +19,11 @@ import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (run)
 import Text.Parsing.Parser (runParser)
 
-main = run [consoleReporter] $ foldl (*>) (pure unit) [parsingtest, schemaparsingtest, codegentest]
+main = run [consoleReporter] do
+         parsingtest
+         schemaparsingtest
+         codegentest 
+         sqltest
 
 sql :: String
 sql = joinWith "\n" [ "blablablablababla;"
@@ -56,7 +64,7 @@ posts :: SQLTable
 posts = SQLTable { name: "posts"
                  , fields: [ SQLField {name: "id", table: "posts", type: UUID, primarykey: true, notnull: false, newtype: Just "PostId"}
                            , SQLField {name: "activityId", table: "posts", type: UUID, primarykey: false, notnull: true, newtype: Nothing}
-                           , SQLField {name: "datePoint", table: "posts", type: SqlDate, primarykey: false, notnull: false, newtype: Nothing }
+                           , SQLField {name: "datePoint", table: "posts", type: Date, primarykey: false, notnull: false, newtype: Nothing }
                            , SQLField {name: "anumber", table: "posts", type: Numeric, primarykey: false, notnull: true, newtype: Nothing }]}
 
 f1 :: SQLFunc
@@ -97,22 +105,44 @@ codegentest = describe "codegen" do
   it "should generate a type declaration for SQLFunc ADT" do
     shouldEqual (toEither $ genTypeDecl [activities, posts] f1) $ Right "myfunc :: forall eff obj. Client -> {myinvar :: UUID | obj} -> Aff (db :: DB | eff) (Array {id :: UUID, description :: String})"
     shouldEqual (toEither $ genTypeDecl [activities, posts] f2) $
-      Right "myfunc2 :: forall eff obj. Client -> {myinvar :: PostId | obj} -> Aff (db :: DB | eff) (Maybe {id :: PostId, activityId :: UUID, datePoint :: Maybe SqlDate, anumber :: Number})"
+      Right "myfunc2 :: forall eff obj. Client -> {myinvar :: PostId | obj} -> Aff (db :: DB | eff) (Maybe {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number})"
 
   it "should generate a function definition" do
-    shouldEqual (genFuncDef [activities, posts] "Res1" f1) ("myfunc cl {myinvar} = (map runRes1) <$> query (Query \"select * from myfunc(?)\") [toSql myinvar] cl")
-    shouldEqual (genFuncDef [activities, posts] "Res2" f2) ("myfunc2 cl {myinvar: (PostId myinvar)} = (map runRes2) <$> queryOne (Query \"select * from myfunc2(?)\") [toSql myinvar] cl")
+    shouldEqual (genFuncDef [activities, posts] "Res1" f1) ("myfunc cl {myinvar} = (map runRes1) <$> query (Query \"select * from myfunc($1)\") [toSql myinvar] cl")
+    shouldEqual (genFuncDef [activities, posts] "Res2" f2) ("myfunc2 cl {myinvar: (PostId myinvar)} = (map runRes2) <$> queryOne (Query \"select * from myfunc2($1)\") [toSql myinvar] cl")
 
   it "should generate a newtype" do
     shouldEqual (toEither $ genNewType "Res1" [activities, posts] (getOutVars f1)) (Right "newtype Res1 = Res1 {id :: UUID, description :: String}")
-    shouldEqual (toEither $ genNewType "Res2" [activities, posts] (getOutVars f2)) (Right "newtype Res2 = Res2 {id :: PostId, activityId :: UUID, datePoint :: Maybe SqlDate, anumber :: Number}")
+    shouldEqual (toEither $ genNewType "Res2" [activities, posts] (getOutVars f2)) (Right "newtype Res2 = Res2 {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number}")
 
   it "should generate a run function" do
     shouldEqual (toEither $ genRun "Res1" [activities, posts] (getOutVars f1)) ( Right $ joinWith "\n" [ "runRes1 :: Res1 -> {id :: UUID, description :: String}"
                                                                                                             , "runRes1 (Res1 a) = a"])
 
   it "should generate a foreign instance" do
-    shouldEqual (toEither $ genForeign "Res2" [activities, posts] (getOutVars f2)) (Right "instance isForeignRes2 :: IsForeign Res2 where read obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _} <$> (PostId <$> (readProp \"id\" obj :: F UUID)) <*> (readProp \"activityId\" obj :: F UUID) <*> (runNull <$> (readProp \"datePoint\" obj :: F (Null SqlDate))) <*> (readProp \"anumber\" obj :: F Number))")
+    shouldEqual (toEither $ genForeign "Res2" [activities, posts] (getOutVars f2)) (Right "instance isSqlValueRes2 :: IsSqlValue Res2 where \n toSql a = toSql \"\"\n fromSql obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _} <$> (PostId <$> (readSqlProp \"id\" obj :: F UUID)) <*> (readSqlProp \"activityId\" obj :: F UUID) <*> (readSqlProp \"datePoint\" obj :: F (Maybe Date)) <*> (readSqlProp \"anumber\" obj :: F Number))")
 
 getOutVars :: SQLFunc -> OutParams
 getOutVars (SQLFunc {vars: {out}}) = out
+
+localConnInfo :: ConnectionInfo
+localConnInfo = {host: "localhost", db: "sqltopurstest", port: 5432, user: "", password: ""}
+
+sqltest = describe "insert and retrieve row" do
+  it "should retrieve the same stuff we put in" do
+    let d = top
+    let t = bottom
+    let twotz = DateTime d t
+    let mt = Nothing
+    withClient localConnInfo \c -> do 
+      inserttest c {d, t, twotz, mt}
+      res <- querytest c 
+      maybe 
+        (fail "No record found")
+        (\{d: d1, t: t1, twotz: twotz1, mt: mt1} -> do
+          d `shouldEqual` d1
+          t `shouldEqual` t1
+          twotz `shouldEqual` twotz1
+          mt `shouldEqual` mt1
+          )
+        res

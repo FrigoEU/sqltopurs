@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "purescript-spec": "0.8.0",
-    "purescript-debug": "1.0.0"
+    "purescript-debug": "1.0.0",
+    "purescript-node-postgres": "FrigoEU/purescript-node-postgres#master"
   }
 }

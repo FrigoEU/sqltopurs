@@ -2,16 +2,15 @@ module SqlToPurs.Codegen where
 
 import Control.Monad.Eff (runPure, Eff)
 import Control.Monad.Eff.Exception (EXCEPTION, throw, message, catchException)
-import Data.Array (range, zip, length)
+import Data.Array (length, range, zip, (..))
 import Data.Either (Either(Left, Right))
 import Data.Foldable (find, foldMap)
 import Data.Maybe (maybe, Maybe(Nothing, Just))
 import Data.String (toLower, joinWith)
 import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
-import Data.Unfoldable (replicate)
 import Prelude (not, ($), id, (<>), (<$>), (>), (||), pure, show, map, bind, (>>=), (==), flip, (-))
-import SqlToPurs.Model (NamedField(NamedField), OutParams(Separate, FullTable), SQLField(SQLField), SQLTable(SQLTable), Var(Var), SQLFunc(SQLFunc), Type(SqlTime, TimestampWithTimeZone, TimestampWithoutTimeZone, SqlDate, UUID, Text, Numeric, Boolean, Int))
+import SqlToPurs.Model (NamedField(NamedField), OutParams(Separate, FullTable), SQLField(SQLField), SQLTable(SQLTable), Var(Var), SQLFunc(SQLFunc), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Numeric, Boolean, Int))
 
 type Exc a = Eff (err :: EXCEPTION) a
 
@@ -22,9 +21,7 @@ header = joinWith "\n" [ "module MyApp.SQL where"
                        , "import Control.Monad.Aff (Aff)"
                        , "import Data.Maybe (Maybe)"
                        , "import Data.Foreign (F)"
-                       , "import Data.Foreign.Null (Null, runNull)"
-                       , "import Database.Postgres.SqlValue (toSql)"
-                       , "import Data.Foreign.Class (class IsForeign, readProp)"]
+                       , "import Database.Postgres.SqlValue (toSql, readSqlProp, fromSql, class IsSqlValue)" ]
 
 full :: Array SQLTable -> Array SQLFunc -> Either String String
 full ts fs = let withIndex = zip fs (range 0 (length fs - 1))
@@ -76,17 +73,18 @@ genForeign :: String -> Array SQLTable -> OutParams -> Exc String
 genForeign nm ts outp = do
   fields <- outParamsToNamedFields ts outp
   let objSugar =  "{" <> joinWith ", " (map (\f -> getFieldName f <> ": _") fields) <> "}"
-  pure $ "instance isForeign" <> nm <> " :: IsForeign " <> nm <>" where read obj = " 
-          <> nm <> " <$> " <> "(" <> objSugar <> " <$> " <> (joinWith " <*> " (map genReadProp fields)) <> ")"
+  pure $ "instance isSqlValue" <> nm <> " :: IsSqlValue " <> nm <>" where " 
+          <> "\n" <> " toSql a = toSql \"\"" 
+          <> "\n" <> " fromSql obj = " <> nm <> " <$> " <> "(" <> objSugar <> " <$> " <> (joinWith " <*> " (map genReadProp fields)) <> ")"
 
 genReadProp :: NamedField -> String
-genReadProp nf@(NamedField {field: (SQLField {primarykey, notnull, type: t, newtype: nt})}) = 
+genReadProp nf@(NamedField {field: (SQLField {primarykey, notnull, type: t, newtype: nt})}) =
   let name = getFieldName nf
-      noNewtypeNoNullable = "readProp \"" <> name <> "\" obj"
+      noNewtypeNoNullable = "readSqlProp \"" <> name <> "\" obj"
       noNewtypeNoNullableWithType =  noNewtypeNoNullable <> " :: F " <> typeToPurs t
-      noNewtypeWithNullableWithType = "runNull <$> (" <> noNewtypeNoNullable <> " :: F (Null "<> typeToPurs t <>")" <>  ")"
+      noNewtypeWithNullableWithType = noNewtypeNoNullable <> " :: F (Maybe "<> typeToPurs t <> ")"
       withNewTypeNoNullableWithType = \nts -> nts <> " <$> (" <> noNewtypeNoNullable <> " :: F " <> typeToPurs t <> ")"
-      withNewTypeWithNullableWithType = \nts -> "((map " <> nts <> ") <<< runNull) <$> (" <> noNewtypeNoNullable <> " :: F (Null "<> typeToPurs t <>")" <>  ")" -- To test!
+      withNewTypeWithNullableWithType = \nts -> "(map " <> nts <> ") <$> (" <> noNewtypeNoNullable <> " :: F (Maybe "<> typeToPurs t <>")" <>  ")" -- To test!
       nullable = not (primarykey || notnull)
    in "(" <> 
       (maybe 
@@ -121,10 +119,9 @@ typeToPurs Boolean = "Boolean"
 typeToPurs Numeric = "Number"
 typeToPurs Text = "String"
 typeToPurs UUID = "UUID"
-typeToPurs SqlDate = "SqlDate"
-typeToPurs TimestampWithoutTimeZone = "TimestampWithoutTimeZone"
-typeToPurs TimestampWithTimeZone = "TimestampWithTimeZone"
-typeToPurs SqlTime = "SqlTime"
+typeToPurs Date = "Date"
+typeToPurs TimestampWithoutTimeZone = "DateTime"
+typeToPurs Time = "Time"
 
 
 genFuncDef :: Array SQLTable -> String -> SQLFunc -> String
@@ -156,4 +153,5 @@ getFieldName (NamedField {name: n, field: (SQLField {name})}) = maybe name id n
 
 
 toQuestionmarks :: forall a. Array a -> String
-toQuestionmarks as = joinWith "," $ replicate (length as) "?"
+toQuestionmarks [] = ""
+toQuestionmarks as = joinWith "," $ map (\i -> "$" <> show i) (1 .. (length as))
