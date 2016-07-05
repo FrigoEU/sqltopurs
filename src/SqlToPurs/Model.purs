@@ -8,11 +8,13 @@ data Type = Int | Boolean | Numeric | UUID | Text | Date | TimestampWithoutTimeZ
 data OutParams = FullTable String
                | Separate (Array Var)
 data Var = Var (Maybe String) String String
+data TypeAnn = NoAnn | NewType String | Data String
 newtype SQLFunc = SQLFunc {name :: String, vars :: {in :: Array Var, out :: OutParams}, set :: Boolean}
-newtype SQLField = SQLField {name :: String, table :: String, type :: Type, primarykey :: Boolean, notnull :: Boolean, newtype :: Maybe String}
+newtype SQLField = SQLField {name :: String, table :: String, type :: Type, primarykey :: Boolean, notnull :: Boolean, newtype :: TypeAnn}
 newtype SQLTable = SQLTable {name :: String, fields :: Array SQLField}
 newtype NamedField = NamedField {name :: Maybe String, field :: SQLField}
 
+derive instance genericTypeAnn :: Generic TypeAnn
 derive instance genericType :: Generic Type
 instance showType :: Show Type where show = gShow
 instance eqType :: Eq Type where eq = gEq

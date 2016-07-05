@@ -10,9 +10,9 @@ import Data.Monoid (mempty)
 import Data.String (fromCharArray, contains, toLower)
 import Data.Tuple (Tuple(Tuple))
 import Prelude (class Monad, Unit, ($), bind, (<$>), unit, pure, (>>=), (<<<), (>), (&&), not, (/=), (==), (>>>))
-import SqlToPurs.Model (SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Int, Boolean, Numeric))
+import SqlToPurs.Model (TypeAnn(NewType, Data, NoAnn), SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Int, Boolean, Numeric))
 import Text.Parsing.Parser (ParserT, fail)
-import Text.Parsing.Parser.Combinators (option, sepBy, optionMaybe, optional, choice, manyTill, sepBy1, (<?>), try, between)
+import Text.Parsing.Parser.Combinators (optional, choice, option, sepBy, manyTill, sepBy1, try, between, (<?>))
 import Text.Parsing.Parser.String (anyChar, string, whiteSpace, char, oneOf)
 import Text.Parsing.Parser.Token (alphaNum)
 
@@ -168,6 +168,9 @@ fieldP table = do
   let primarykey = contains "primary key" qualifiers
   let notnull = contains "not null" qualifiers
   optional whiteSpace
-  nt <- optionMaybe (string "/* newtype " *> word >>= (\w -> string " */" *> pure w))
+  nt <- (string "/* newtype " *> word >>= (\w -> string " */" *> pure (NewType w)))
+        <|> (string "/* data " *> word >>= (\w -> string " */" *> pure (Data w)))
+        <|> pure NoAnn
+  optional whiteSpace
   pure $ SQLField {name, table, "type": t, primarykey, notnull, newtype: nt}
 

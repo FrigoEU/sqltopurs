@@ -10,7 +10,7 @@ import Data.String (toLower, joinWith)
 import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
 import Prelude (not, ($), id, (<>), (<$>), (>), (||), pure, show, map, bind, (>>=), (==), flip, (-))
-import SqlToPurs.Model (NamedField(NamedField), OutParams(Separate, FullTable), SQLField(SQLField), SQLTable(SQLTable), Var(Var), SQLFunc(SQLFunc), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Numeric, Boolean, Int))
+import SqlToPurs.Model (TypeAnn(Data, NewType, NoAnn), NamedField(NamedField), OutParams(Separate, FullTable), SQLField(SQLField), SQLTable(SQLTable), Var(Var), SQLFunc(SQLFunc), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Numeric, Boolean, Int))
 
 type Exc a = Eff (err :: EXCEPTION) a
 
@@ -81,17 +81,17 @@ genReadProp :: NamedField -> String
 genReadProp nf@(NamedField {field: (SQLField {primarykey, notnull, type: t, newtype: nt})}) =
   let name = getFieldName nf
       noNewtypeNoNullable = "readSqlProp \"" <> name <> "\" obj"
-      noNewtypeNoNullableWithType =  noNewtypeNoNullable <> " :: F " <> typeToPurs t
-      noNewtypeWithNullableWithType = noNewtypeNoNullable <> " :: F (Maybe "<> typeToPurs t <> ")"
+      noNewtypeNoNullableWithType tp =  noNewtypeNoNullable <> " :: F " <> tp
+      noNewtypeWithNullableWithType tp = noNewtypeNoNullable <> " :: F (Maybe "<> tp <> ")"
       withNewTypeNoNullableWithType = \nts -> nts <> " <$> (" <> noNewtypeNoNullable <> " :: F " <> typeToPurs t <> ")"
       withNewTypeWithNullableWithType = \nts -> "(map " <> nts <> ") <$> (" <> noNewtypeNoNullable <> " :: F (Maybe "<> typeToPurs t <>")" <>  ")" -- To test!
       nullable = not (primarykey || notnull)
    in "(" <> 
-      (maybe 
-        (if nullable then noNewtypeWithNullableWithType else noNewtypeNoNullableWithType)
-        (\nts -> if nullable then withNewTypeWithNullableWithType nts else withNewTypeNoNullableWithType nts)
-        nt) <>
-      ")"
+      (case nt of 
+            NoAnn -> if nullable then noNewtypeWithNullableWithType (annotationToPurs t NoAnn) else noNewtypeNoNullableWithType (annotationToPurs t NoAnn)
+            Data d -> if nullable then noNewtypeWithNullableWithType (annotationToPurs t (Data d)) else noNewtypeNoNullableWithType (annotationToPurs t (Data d))
+            NewType nts -> if nullable then withNewTypeWithNullableWithType nts else withNewTypeNoNullableWithType nts
+        ) <> ")"
 
 outParamsToNamedFields :: Array SQLTable -> OutParams -> Exc (Array NamedField)
 outParamsToNamedFields ts (FullTable tableN) = maybe (throw $ "Table " <> tableN <> "not found!") pure (tableToNamedFields ts tableN)
@@ -109,9 +109,14 @@ namedFieldsToRecord ext fs = "{" <> joinWith ", " (namedFieldToPurs <$> fs) <> (
 
 namedFieldToPurs :: NamedField -> String
 namedFieldToPurs nf@(NamedField {field: (SQLField {type: t, primarykey, notnull, newtype: nt})}) = 
-  name <> " :: " <> (if primarykey || notnull then "" else "Maybe ") <> (maybe (typeToPurs t) id nt)
+  name <> " :: " <> (if primarykey || notnull then "" else "Maybe ") <> annotationToPurs t nt
     where
       name = getFieldName nf
+
+annotationToPurs :: Type -> TypeAnn -> String
+annotationToPurs t NoAnn = typeToPurs t
+annotationToPurs t (NewType nt) = nt
+annotationToPurs t (Data d) = d
 
 typeToPurs :: Type -> String
 typeToPurs Int = "Int"
@@ -143,7 +148,9 @@ genFuncDef ts nm (SQLFunc {name, vars: {in: invars}, set}) =
                              invarname = getInVarName v
                           in case nf of
                                   Nothing -> ""
-                                  (Just (NamedField {field: (SQLField {newtype: nt})})) -> maybe invarname (\nts -> (invarname <> ": " <> "(" <> nts <> " " <>  invarname <> ")")) nt
+                                  (Just (NamedField {field: (SQLField {newtype: NoAnn})})) -> invarname
+                                  (Just (NamedField {field: (SQLField {newtype: (NewType nts)})})) -> invarname <> ": " <> "(" <> nts <> " " <>  invarname <> ")"
+                                  (Just (NamedField {field: (SQLField {newtype: (Data d)})})) -> invarname
           getInVarName :: Var -> String
           getInVarName (Var (Just n) _     _    ) = n
           getInVarName (Var Nothing  table field) = table <> "_" <> field

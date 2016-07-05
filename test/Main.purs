@@ -11,12 +11,13 @@ import Database.Postgres (withClient, ConnectionInfo)
 import MyApp.SQL (querytest, inserttest)
 import Prelude (show, bind, (<>), ($), unit, pure)
 import SqlToPurs.Codegen (toEither, genForeign, genRun, genNewType, genFuncDef, genTypeDecl)
-import SqlToPurs.Model (SQLField(SQLField), OutParams(Separate, FullTable), Var(Var), SQLTable(SQLTable), SQLFunc(SQLFunc), Type(Numeric, Date, Text, UUID))
+import SqlToPurs.Model (TypeAnn(NoAnn, NewType), SQLField(SQLField), OutParams(Separate, FullTable), Var(Var), SQLTable(SQLTable), SQLFunc(SQLFunc), Type(Numeric, Date, Text, UUID))
 import SqlToPurs.Parsing (schemaP, functionsP)
 import Test.Spec (it, describe)
 import Test.Spec.Assertions (shouldEqual, fail)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (run)
+import Test.SqlTestModel (MyADT(Two))
 import Text.Parsing.Parser (runParser)
 
 main = run [consoleReporter] do
@@ -58,14 +59,14 @@ sql = joinWith "\n" [ "blablablablababla;"
 
 activities :: SQLTable
 activities = SQLTable { name: "activities"
-                      , fields: [ SQLField {name: "id", table: "activities", type: UUID, primarykey: true, notnull: false, newtype: Nothing }
-                                , SQLField {name: "description", table: "activities", type: Text, primarykey: false, notnull: true, newtype: Nothing }]}
+                      , fields: [ SQLField {name: "id", table: "activities", type: UUID, primarykey: true, notnull: false, newtype: NoAnn }
+                                , SQLField {name: "description", table: "activities", type: Text, primarykey: false, notnull: true, newtype: NoAnn }]}
 posts :: SQLTable
 posts = SQLTable { name: "posts"
-                 , fields: [ SQLField {name: "id", table: "posts", type: UUID, primarykey: true, notnull: false, newtype: Just "PostId"}
-                           , SQLField {name: "activityId", table: "posts", type: UUID, primarykey: false, notnull: true, newtype: Nothing}
-                           , SQLField {name: "datePoint", table: "posts", type: Date, primarykey: false, notnull: false, newtype: Nothing }
-                           , SQLField {name: "anumber", table: "posts", type: Numeric, primarykey: false, notnull: true, newtype: Nothing }]}
+                 , fields: [ SQLField {name: "id", table: "posts", type: UUID, primarykey: true, notnull: false, newtype: NewType "PostId"}
+                           , SQLField {name: "activityId", table: "posts", type: UUID, primarykey: false, notnull: true, newtype: NoAnn}
+                           , SQLField {name: "datePoint", table: "posts", type: Date, primarykey: false, notnull: false, newtype: NoAnn }
+                           , SQLField {name: "anumber", table: "posts", type: Numeric, primarykey: false, notnull: true, newtype: NoAnn }]}
 
 f1 :: SQLFunc
 f1 = SQLFunc { name: "myfunc"
@@ -134,15 +135,17 @@ sqltest = describe "insert and retrieve row" do
     let t = bottom
     let twotz = DateTime d t
     let mt = Nothing
+    let myadt = Just Two
     withClient localConnInfo \c -> do 
-      inserttest c {d, t, twotz, mt}
+      inserttest c {d, t, twotz, myadt, mt}
       res <- querytest c 
       maybe 
         (fail "No record found")
-        (\{d: d1, t: t1, twotz: twotz1, mt: mt1} -> do
+        (\{d: d1, t: t1, twotz: twotz1, myadt: myadt1, mt: mt1} -> do
           d `shouldEqual` d1
           t `shouldEqual` t1
           twotz `shouldEqual` twotz1
+          myadt `shouldEqual` myadt1
           mt `shouldEqual` mt1
           )
         res

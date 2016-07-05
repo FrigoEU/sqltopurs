@@ -4,7 +4,7 @@ import Control.Apply ((*>))
 import Control.Monad.Aff (runAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (CONSOLE, log)
-import Control.Monad.Eff.Exception (EXCEPTION, error)
+import Control.Monad.Eff.Exception (throwException, EXCEPTION, error)
 import Control.Monad.Error.Class (throwError)
 import Control.Monad.Free (Free)
 import Control.Monad.Trampoline (runTrampoline)
@@ -31,8 +31,8 @@ main = runY setup $ go <$> yarg "i" ["in"]  (Just "Input File") (Right "Needs an
                        <*> yarg "o" ["out"] (Just "Output File") (Right "Needs an output file") true
                        <*> yarg "e" ["extra"] (Just "Extra File to be inlined") (Left "") true
 
-go :: forall eff. String -> String -> String -> Eff (fs :: FS, console :: CONSOLE | eff) Unit
-go i o e = runAff (log <<< ("Error: " <> _) <<< show) (const $ log "Done") (do
+go :: forall eff. String -> String -> String -> Eff (fs :: FS, console :: CONSOLE, err :: EXCEPTION | eff) Unit
+go i o e = runAff (throwException <<< error <<< show) (const $ log "Done") (do
   sql <- readTextFile UTF8 i
   extra <- if e == "" then pure "" else readTextFile UTF8 e
   parsedFunctions <- either (\e -> throwError $ error $ "ParseError: " <> show e) pure $ runStack sql functionsP
