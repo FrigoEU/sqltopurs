@@ -89,7 +89,7 @@ parsingtest = describe "function parsing" do
   it "should be able to parse functions without in or out vars" do
     either (\e -> fail $ "Parsing failed: " <> show e) 
            (shouldEqual [SQLFunc {name: "queryAllActivities", vars: {in: [], out: FullTable "activities"}, set: true}]) 
-           $ runParser "CREATE FUNCTION queryAllActivities () RETURNS SETOF activities AS $$ select activities; $$ LANGUAGE SQL; " functionsP
+           $ runParser "CREATE FUNCTION queryAllActivities () RETURNS SETOF activities AS $$ select * from activities; $$ LANGUAGE SQL; " functionsP
 
 
 {-- parsingtest = pure unit --}
@@ -109,8 +109,8 @@ codegentest = describe "codegen" do
       Right "myfunc2 :: forall eff obj. Client -> {myinvar :: PostId | obj} -> Aff (db :: DB | eff) (Maybe {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number})"
 
   it "should generate a function definition" do
-    shouldEqual (genFuncDef [activities, posts] "Res1" f1) ("myfunc cl {myinvar} = (map runRes1) <$> query (Query \"select myfunc($1)\") [toSql myinvar] cl")
-    shouldEqual (genFuncDef [activities, posts] "Res2" f2) ("myfunc2 cl {myinvar: (PostId myinvar)} = (map runRes2) <$> queryOne (Query \"select myfunc2($1)\") [toSql myinvar] cl")
+    shouldEqual (genFuncDef [activities, posts] "Res1" f1) ("myfunc cl {myinvar} = (map runRes1) <$> query (Query \"select * from myfunc($1)\") [toSql myinvar] cl")
+    shouldEqual (genFuncDef [activities, posts] "Res2" f2) ("myfunc2 cl {myinvar: (PostId myinvar)} = (map runRes2) <$> queryOne (Query \"select * from myfunc2($1)\") [toSql myinvar] cl")
 
   it "should generate a newtype" do
     shouldEqual (toEither $ genNewType "Res1" [activities, posts] (getOutVars f1)) (Right "newtype Res1 = Res1 {id :: UUID, description :: String}")

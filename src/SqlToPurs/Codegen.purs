@@ -139,7 +139,7 @@ genFuncDef ts nm (SQLFunc {name, vars: {in: invars}, set}) =
       <> " = "
       <> "(map run" <> nm <> ") <$> " 
       <> (if set then "query " else "queryOne ")
-      <> "(Query \"select " <> name <> "(" <> toQuestionmarks invars <> ")\") "
+      <> "(Query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\") "
       <> "[" <> joinWith ", " ((\v -> "toSql " <> getInVarName v) <$> invars) <> "]"
       <> " cl"
         where
