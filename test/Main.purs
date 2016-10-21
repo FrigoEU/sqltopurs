@@ -120,8 +120,8 @@ codegentest = describe "codegen" do
     shouldEqual (toEither $ genRun "Res1" [activities, posts] (getOutVars f1)) ( Right $ joinWith "\n" [ "runRes1 :: Res1 -> {id :: UUID, description :: String}"
                                                                                                             , "runRes1 (Res1 a) = a"])
 
-  it "should generate a foreign instance" do
-    shouldEqual (toEither $ genForeign "Res2" [activities, posts] (getOutVars f2)) (Right "instance isSqlValueRes2 :: IsSqlValue Res2 where \n toSql a = toSql \"\"\n fromSql obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _} <$> (PostId <$> (readSqlProp \"id\" obj :: F UUID)) <*> (readSqlProp \"activityId\" obj :: F UUID) <*> (readSqlProp \"datePoint\" obj :: F (Maybe Date)) <*> (readSqlProp \"anumber\" obj :: F Number))")
+  it "should generate a foreign instance, lowercasing the property names" do
+    shouldEqual (toEither $ genForeign "Res2" [activities, posts] (getOutVars f2)) (Right "instance isSqlValueRes2 :: IsSqlValue Res2 where \n toSql a = toSql \"\"\n fromSql obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _} <$> (PostId <$> (readSqlProp \"id\" obj :: F UUID)) <*> (readSqlProp \"activityid\" obj :: F UUID) <*> (readSqlProp \"datepoint\" obj :: F (Maybe Date)) <*> (readSqlProp \"anumber\" obj :: F Number))")
 
 getOutVars :: SQLFunc -> OutParams
 getOutVars (SQLFunc {vars: {out}}) = out

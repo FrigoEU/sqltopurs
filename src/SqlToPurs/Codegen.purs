@@ -80,7 +80,7 @@ genForeign nm ts outp = do
 genReadProp :: NamedField -> String
 genReadProp nf@(NamedField {field: (SQLField {primarykey, notnull, type: t, newtype: nt})}) =
   let name = getFieldName nf
-      noNewtypeNoNullable = "readSqlProp \"" <> name <> "\" obj"
+      noNewtypeNoNullable = "readSqlProp \"" <> toLower name <> "\" obj"
       noNewtypeNoNullableWithType tp =  noNewtypeNoNullable <> " :: F " <> tp
       noNewtypeWithNullableWithType tp = noNewtypeNoNullable <> " :: F (Maybe "<> tp <> ")"
       withNewTypeNoNullableWithType = \nts -> nts <> " <$> (" <> noNewtypeNoNullable <> " :: F " <> typeToPurs t <> ")"
