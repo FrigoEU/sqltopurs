@@ -12,17 +12,17 @@
     "output"
   ],
   "dependencies": {
-    "purescript-console": "1.0.0",
-    "purescript-generics": "1.0.0",
-    "purescript-node-fs-aff": "1.0.0",
-    "purescript-parsing": "1.0.0",
-    "purescript-yargs": "1.0.0",
-    "purescript-free": "1.0.0"
+    "purescript-console": "2.0.0",
+    "purescript-generics": "3.1.0",
+    "purescript-node-fs-aff": "3.0.0",
+    "purescript-parsing": "3.0.0",
+    "purescript-yargs": "https://github.com/paf31/purescript-yargs.git#master",
+    "purescript-free": "3.0.0"
   },
   "devDependencies": {
-    "purescript-spec": "0.8.0",
-    "purescript-debug": "1.0.0",
+    "purescript-spec": "0.10.0",
+    "purescript-debug": "2.0.0",
     "purescript-node-postgres": "FrigoEU/purescript-node-postgres#master",
-    "purescript-argonaut-codecs": "1.0.0"
+    "purescript-argonaut-codecs": "2.0.0"
   }
 }

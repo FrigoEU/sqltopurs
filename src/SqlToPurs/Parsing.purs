@@ -7,7 +7,7 @@ import Data.Foldable (foldMap, foldl)
 import Data.List (toUnfoldable)
 import Data.Maybe (isNothing, maybe, Maybe(Nothing, Just), isJust)
 import Data.Monoid (mempty)
-import Data.String (fromCharArray, contains, toLower)
+import Data.String (Pattern(..), contains, fromCharArray, toLower)
 import Data.Tuple (Tuple(Tuple))
 import Prelude (class Monad, Unit, ($), bind, (<$>), unit, pure, (>>=), (<<<), (>), (&&), not, (/=), (==), (>>>))
 import SqlToPurs.Model (TypeAnn(NewType, Data, NoAnn), SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Int, Boolean, Numeric))
@@ -165,8 +165,8 @@ fieldP table = do
   t <- typeP
   optional whiteSpace
   qualifiers <- foldMap toLower <$> sepBy (option "" $ choice [string "primary key", string "PRIMARY KEY", string "not null", string "NOT NULL", string "unique", string "UNIQUE"]) (string " ")
-  let primarykey = contains "primary key" qualifiers
-  let notnull = contains "not null" qualifiers
+  let primarykey = contains (Pattern "primary key") qualifiers
+  let notnull = contains (Pattern "not null") qualifiers
   optional whiteSpace
   nt <- (string "/* newtype " *> word >>= (\w -> string " */" *> pure (NewType w)))
         <|> (string "/* data " *> word >>= (\w -> string " */" *> pure (Data w)))

@@ -19,8 +19,8 @@ import Node.Yargs.Setup (YargsSetup, example, usage)
 import Prelude (unit, Unit, (<<<), (<>), pure, ($), bind, show, (==), const, (<*>), (<$>))
 import SqlToPurs.Codegen (header, full)
 import SqlToPurs.Parsing (schemaP, functionsP)
-import Text.Parsing.Parser (ParseError, ParserT, PState(PState), runParserT)
-import Text.Parsing.Parser.Pos (initialPos)
+import Text.Parsing.Parser (ParseError, ParseState(..), ParserT, runParserT)
+import Text.Parsing.Parser.Pos (Position(..), initialPos)
 
 setup :: YargsSetup
 setup = usage "$0 -i Inputfile -o Outputfile" 
@@ -41,5 +41,8 @@ go i o e = runAff (throwException <<< error <<< show) (const $ log "Done") (do
   writeTextFile UTF8 o (header <> "\n" <> extra <> "\n" <> gen))
     *> pure unit
 
-runStack :: forall t8 t9. t9 -> ParserT t9 (Free Lazy) t8 -> Either ParseError t8
-runStack s = runTrampoline <<< runParserT (PState {input: s, position: initialPos})
+-- runStack :: forall t2 t8.
+--             t2
+--             -> ParserT (Position -> Boolean -> ParseState { input :: t2 , position :: Position}) (Free Lazy) t8
+--             -> Either ParseError t8
+runStack s = runTrampoline <<< runParserT s
