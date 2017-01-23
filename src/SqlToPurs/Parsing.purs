@@ -4,16 +4,16 @@ import Control.Alt ((<|>))
 import Control.Apply ((*>))
 import Data.Array (many, snoc, length, filter, some)
 import Data.Foldable (foldMap, foldl)
-import Data.List (toUnfoldable)
+import Data.List (List, toUnfoldable)
 import Data.Maybe (isNothing, maybe, Maybe(Nothing, Just), isJust)
 import Data.Monoid (mempty)
 import Data.String (Pattern(..), contains, fromCharArray, toLower)
 import Data.Tuple (Tuple(Tuple))
-import Prelude (class Monad, Unit, ($), bind, (<$>), unit, pure, (>>=), (<<<), (>), (&&), not, (/=), (==), (>>>))
+import Prelude (class Monad, Unit, bind, not, pure, unit, ($), (&&), (/=), (<$>), (<<<), (==), (>), (>>=))
 import SqlToPurs.Model (TypeAnn(NewType, Data, NoAnn), SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Int, Boolean, Numeric))
 import Text.Parsing.Parser (ParserT, fail)
-import Text.Parsing.Parser.Combinators (optional, choice, option, sepBy, manyTill, sepBy1, try, between, (<?>))
-import Text.Parsing.Parser.String (anyChar, string, whiteSpace, char, oneOf)
+import Text.Parsing.Parser.Combinators (between, choice, manyTill, option, optionMaybe, optional, sepBy, sepBy1, try, (<?>))
+import Text.Parsing.Parser.String (anyChar, char, oneOf, string, whiteSpace)
 import Text.Parsing.Parser.Token (alphaNum)
 
 data Dir = In | Out
@@ -59,7 +59,7 @@ varsP :: forall m. (Monad m) => ParserT String m (Array (Tuple Dir Var))
 varsP = betweenBrackets $ toUnfoldable <$> (sepBy varAndDirP (optional whiteSpace *> char ',' *> optional whiteSpace))
 
 returnsP :: forall m. (Monad m) => ParserT String m (Maybe (Tuple Boolean String))
-returnsP = (try >>> maybeP)
+returnsP = optionMaybe
        ( do string "RETURNS SETOF " <|> string "returns setof "
             str <- word
             pure (Tuple true str)
@@ -68,16 +68,25 @@ returnsP = (try >>> maybeP)
             str <- word
             pure (Tuple false str))
 
+outersP :: forall m. (Monad m) => ParserT String m (Maybe (List String))
+outersP = optionMaybe
+          (do string "-- outer join "
+              o <- sepBy1 word (optional whiteSpace *> char ',' *> optional whiteSpace)
+              char ';'
+              pure o
+          )
 
 createFunctionP :: forall m. (Monad m) => ParserT String m String
 createFunctionP = (string "CREATE FUNCTION " <|> string "create function ") 
 
 functionP :: forall m. (Monad m) => ParserT String m SQLFunc
-functionP = do 
+functionP = do
   createFunctionP
   name <- word
   optional whiteSpace
   vars <- varsP
+  optional whiteSpace
+  outers <- outersP
   optional whiteSpace
   returns <- returnsP
   let set = maybe false (\(Tuple b _) -> b) returns
@@ -90,7 +99,7 @@ functionP = do
   out <- if isNothing returnsFullTable && length outvars == 0 
             then fail "Function is not returning anything, not supported. If deleting, just pure the id"
             else pure $ maybe (Separate outvars) FullTable returnsFullTable 
-  pure $ SQLFunc {name, vars: {in: invars, out}, set}
+  pure $ SQLFunc {name, vars: {in: invars, out}, set, outers}
     where 
       isIn :: Tuple Dir Var -> Boolean
       isIn (Tuple In v) = true

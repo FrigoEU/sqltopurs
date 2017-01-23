@@ -8,3 +8,5 @@ sqltopurs.js
 test.sql
 extra.purs
 npm-debug.log
+/output_dev/
+run*.js

@@ -5,7 +5,8 @@ import Data.Bounded (top, bottom)
 import Data.DateTime (DateTime(DateTime))
 import Data.Either (Either(Right), either)
 import Data.Foldable (foldl)
-import Data.Maybe (maybe, Maybe(Nothing, Just))
+import Data.List (List(..))
+import Data.Maybe (Maybe(..), maybe)
 import Data.String (joinWith)
 import Database.Postgres (withClient, ConnectionInfo)
 import MyApp.SQL (querytest, inserttest)
@@ -41,7 +42,7 @@ sql = joinWith "\n" [ "blablablablababla;"
                     , "  anumber numeric(2,2) NOT NULL"
                     , ");"
 
-                          
+
                     , "CREATE FUNCTION myfunc (IN myinvar activities.id%TYPE)"
                     , "RETURNS SETOF activities"
                     , "AS $$"
@@ -50,11 +51,12 @@ sql = joinWith "\n" [ "blablablablababla;"
                     , "  WHERE id = myinvar;"
                     , "$$ LANGUAGE SQL;"
 
-                    , "CREATE FUNCTION myfunc2 (IN myinvar posts.id%TYPE, OUT posts.id%TYPE, OUT posts.activityId%TYPE, OUT posts.datePoint%TYPE, OUT posts.anumber%TYPE)"
+                    , "CREATE FUNCTION myfunc2 (IN myinvar posts.id%TYPE, OUT posts.id%TYPE, OUT posts.activityId%TYPE, OUT posts.datePoint%TYPE, OUT posts.anumber%TYPE, OUT activities.description%TYPE)"
+                    , "  -- outer join activities;"
                     , "AS $$"
-                    , "SELECT id, activityId, datePoint, anumber"
-                    , "from posts"
-                    , "where id = myinvar;"
+                    , "SELECT p.id, p.activityId, p.datePoint, p.anumber, a.description"
+                    , "from posts p outer join activities a on p.id = a.id"
+                    , "where p.id = myinvar;"
                     , "$$ LANGUAGE SQL;" ]
 
 activities :: SQLTable
@@ -72,13 +74,15 @@ f1 :: SQLFunc
 f1 = SQLFunc { name: "myfunc"
              , vars: { in: [Var (Just "myinvar") "activities" "id"]
                      , out: FullTable "activities"}
-             , set: true}
+             , set: true
+             , outers: Nothing}
 
 f2 :: SQLFunc
 f2 = SQLFunc { name: "myfunc2"
              , vars: { in: [Var (Just "myinvar") "posts" "id"]
-                     , out: Separate [Var Nothing "posts" "id", Var Nothing "posts" "activityId", Var Nothing "posts" "datePoint", Var Nothing "posts" "anumber"]}
-             , set: false}
+                     , out: Separate [Var Nothing "posts" "id", Var Nothing "posts" "activityId", Var Nothing "posts" "datePoint", Var Nothing "posts" "anumber", Var Nothing "activities" "description"]}
+             , set: false
+             , outers: Just (Cons "activities" Nil)}
 
 
 parsingtest = describe "function parsing" do
@@ -88,7 +92,7 @@ parsingtest = describe "function parsing" do
            $ runParser sql functionsP
   it "should be able to parse functions without in or out vars" do
     either (\e -> fail $ "Parsing failed: " <> show e) 
-           (shouldEqual [SQLFunc {name: "queryAllActivities", vars: {in: [], out: FullTable "activities"}, set: true}]) 
+           (shouldEqual [SQLFunc {name: "queryAllActivities", vars: {in: [], out: FullTable "activities"}, set: true, outers: Nothing}]) 
            $ runParser "CREATE FUNCTION queryAllActivities () RETURNS SETOF activities AS $$ select * from activities; $$ LANGUAGE SQL; " functionsP
 
 
@@ -106,22 +110,27 @@ codegentest = describe "codegen" do
   it "should generate a type declaration for SQLFunc ADT" do
     shouldEqual (toEither $ genTypeDecl [activities, posts] f1) $ Right "myfunc :: forall eff obj. Client -> {myinvar :: UUID | obj} -> Aff (db :: DB | eff) (Array {id :: UUID, description :: String})"
     shouldEqual (toEither $ genTypeDecl [activities, posts] f2) $
-      Right "myfunc2 :: forall eff obj. Client -> {myinvar :: PostId | obj} -> Aff (db :: DB | eff) (Maybe {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number})"
+      Right "myfunc2 :: forall eff obj. Client -> {myinvar :: PostId | obj} -> Aff (db :: DB | eff) (Maybe {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number, description :: Maybe String})"
 
   it "should generate a function definition" do
     shouldEqual (genFuncDef [activities, posts] "Res1" f1) ("myfunc cl {myinvar} = (map runRes1) <$> query (Query \"select * from myfunc($1)\") [toSql myinvar] cl")
     shouldEqual (genFuncDef [activities, posts] "Res2" f2) ("myfunc2 cl {myinvar: (PostId myinvar)} = (map runRes2) <$> queryOne (Query \"select * from myfunc2($1)\") [toSql myinvar] cl")
 
   it "should generate a newtype" do
-    shouldEqual (toEither $ genNewType "Res1" [activities, posts] (getOutVars f1)) (Right "newtype Res1 = Res1 {id :: UUID, description :: String}")
-    shouldEqual (toEither $ genNewType "Res2" [activities, posts] (getOutVars f2)) (Right "newtype Res2 = Res2 {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number}")
+    shouldEqual
+      (toEither $ genNewType "Res1" [activities, posts] (getOutVars f1) Nothing)
+      (Right "newtype Res1 = Res1 {id :: UUID, description :: String}")
+    shouldEqual
+      (toEither $ genNewType "Res2" [activities, posts] (getOutVars f2) (Just (Cons "activities" Nil)))
+      (Right "newtype Res2 = Res2 {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number, description :: Maybe String}")
 
   it "should generate a run function" do
-    shouldEqual (toEither $ genRun "Res1" [activities, posts] (getOutVars f1)) ( Right $ joinWith "\n" [ "runRes1 :: Res1 -> {id :: UUID, description :: String}"
-                                                                                                            , "runRes1 (Res1 a) = a"])
+    shouldEqual
+      (toEither $ genRun "Res1" [activities, posts] (getOutVars f1) Nothing)
+      (Right $ joinWith "\n" [ "runRes1 :: Res1 -> {id :: UUID, description :: String}" , "runRes1 (Res1 a) = a"])
 
   it "should generate a foreign instance, lowercasing the property names" do
-    shouldEqual (toEither $ genForeign "Res2" [activities, posts] (getOutVars f2)) (Right "instance isSqlValueRes2 :: IsSqlValue Res2 where \n toSql a = toSql \"\"\n fromSql obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _} <$> (PostId <$> (readSqlProp \"id\" obj :: F UUID)) <*> (readSqlProp \"activityid\" obj :: F UUID) <*> (readSqlProp \"datepoint\" obj :: F (Maybe Date)) <*> (readSqlProp \"anumber\" obj :: F Number))")
+    shouldEqual (toEither $ genForeign "Res2" [activities, posts] (getOutVars f2) (Just (Cons "activities" Nil))) (Right "instance isSqlValueRes2 :: IsSqlValue Res2 where \n toSql a = toSql \"\"\n fromSql obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _, description: _} <$> (PostId <$> (readSqlProp \"id\" obj :: F UUID)) <*> (readSqlProp \"activityid\" obj :: F UUID) <*> (readSqlProp \"datepoint\" obj :: F (Maybe Date)) <*> (readSqlProp \"anumber\" obj :: F Number) <*> (readSqlProp \"description\" obj :: F (Maybe String)))")
 
 getOutVars :: SQLFunc -> OutParams
 getOutVars (SQLFunc {vars: {out}}) = out
