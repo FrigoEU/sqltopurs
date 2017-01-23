@@ -40,6 +40,7 @@ sql = joinWith "\n" [ "blablablablababla;"
                     , "  activityId uuid UNIQUE NOT NULL, -- ignore 'unique' test"
                     , "  datePoint date, --comment test"
                     , "  anumber numeric(2,2) NOT NULL"
+                    , "  FOREIGN KEY (activityId) REFERENCES activities(id)"
                     , ");"
 
 

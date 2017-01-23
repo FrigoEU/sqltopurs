@@ -160,7 +160,7 @@ tableP = do
   whiteSpace
   fields <- toUnfoldable <$> (sepBy1 (fieldP name) (optional whiteSpace *> char ',' *> optional whiteSpace *> optional commentP *> optional whiteSpace))
   optional whiteSpace
-  string ")"
+  manyTill anyChar (string ")")
   optional (string ";")
   pure $ SQLTable {name, fields}
 
