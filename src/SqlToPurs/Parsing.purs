@@ -30,7 +30,7 @@ word :: forall m. (Monad m) => ParserT String m String
 word = some' alphaNum <?> "Variable Name"
 
 betweenBrackets :: forall a m. (Monad m) => ParserT String m a -> ParserT String m a
-betweenBrackets = between (string "(") (string ")")
+betweenBrackets = between (string "(" *> optional whiteSpace) (optional whiteSpace *> string ")")
 
 varP :: forall m. (Monad m) => ParserT String m Var
 varP = try do name <- word

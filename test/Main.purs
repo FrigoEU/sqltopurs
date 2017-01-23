@@ -43,7 +43,8 @@ sql = joinWith "\n" [ "blablablablababla;"
                     , ");"
 
 
-                    , "CREATE FUNCTION myfunc (IN myinvar activities.id%TYPE)"
+                    , "CREATE FUNCTION myfunc ("
+                    , "IN myinvar activities.id%TYPE)"
                     , "RETURNS SETOF activities"
                     , "AS $$"
                     , "  SELECT id, description"
