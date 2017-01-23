@@ -2,19 +2,21 @@ module SqlToPurs.Parsing where
 
 import Control.Alt ((<|>))
 import Control.Apply ((*>))
-import Data.Array (many, snoc, length, filter, some)
+import Data.Array (catMaybes, filter, length, many, snoc, some)
+import Data.Either (Either(..))
 import Data.Foldable (foldMap, foldl)
 import Data.List (List, toUnfoldable)
-import Data.Maybe (isNothing, maybe, Maybe(Nothing, Just), isJust)
+import Data.Maybe (Maybe(..), isJust, isNothing, maybe)
 import Data.Monoid (mempty)
 import Data.String (Pattern(..), contains, fromCharArray, toLower)
 import Data.Tuple (Tuple(Tuple))
-import Prelude (class Monad, Unit, bind, not, pure, unit, ($), (&&), (/=), (<$>), (<<<), (==), (>), (>>=))
+import Debug.Trace (spy)
+import Prelude (class Monad, Unit, bind, const, not, pure, unit, ($), (&&), (/=), (<$>), (<<<), (==), (>), (>>=))
 import SqlToPurs.Model (TypeAnn(NewType, Data, NoAnn), SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Int, Boolean, Numeric))
 import Text.Parsing.Parser (ParserT, fail)
 import Text.Parsing.Parser.Combinators (between, choice, manyTill, option, optionMaybe, optional, sepBy, sepBy1, try, (<?>))
 import Text.Parsing.Parser.String (anyChar, char, oneOf, string, whiteSpace)
-import Text.Parsing.Parser.Token (alphaNum)
+import Text.Parsing.Parser.Token (alphaNum, letter, space)
 
 data Dir = In | Out
 
@@ -158,10 +160,12 @@ tableP = do
   whiteSpace
   string "("
   whiteSpace
-  fields <- toUnfoldable <$> (sepBy1 (fieldP name) (optional whiteSpace *> char ',' *> optional whiteSpace *> optional commentP *> optional whiteSpace))
+  fields <- catMaybes <$> toUnfoldable <$> (
+    sepBy1 (choice [(const Nothing) <$> foreignKey, Just <$> (fieldP name)])
+           (optional whiteSpace *> char ',' *>
+            optional whiteSpace *> optional commentP *> optional whiteSpace))
   optional whiteSpace
-  manyTill anyChar (string ")")
-  optional (string ";")
+  string ")" *> optional (string ";")
   pure $ SQLTable {name, fields}
 
 commentP :: forall m. (Monad m) => ParserT String m Unit
@@ -183,3 +187,15 @@ fieldP table = do
   optional whiteSpace
   pure $ SQLField {name, table, "type": t, primarykey, notnull, newtype: nt}
 
+foreignKey :: forall m. (Monad m) => ParserT String m Unit
+foreignKey = do
+  string "FOREIGN KEY" <|> string "foreign key"
+  whiteSpace
+  char '(' *> manyTill (letter <|> space <|> char ',') (char ')')
+  whiteSpace
+  string "REFERENCES" <|> string "references"
+  whiteSpace
+  word
+  bla <- char '(' *> manyTill (letter <|> space <|> char ',') (char ')')
+  optional whiteSpace
+  pure unit

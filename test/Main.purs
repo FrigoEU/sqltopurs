@@ -39,7 +39,7 @@ sql = joinWith "\n" [ "blablablablababla;"
                     , "  id uuid PRIMARY KEY/* newtype PostId */,"
                     , "  activityId uuid UNIQUE NOT NULL, -- ignore 'unique' test"
                     , "  datePoint date, --comment test"
-                    , "  anumber numeric(2,2) NOT NULL"
+                    , "  anumber numeric(2,2) NOT NULL,"
                     , "  FOREIGN KEY (activityId) REFERENCES activities(id)"
                     , ");"
 
