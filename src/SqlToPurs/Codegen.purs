@@ -58,7 +58,7 @@ checkDuplicateVars :: OutParams -> Exc Unit
 checkDuplicateVars (FullTable _) = pure unit
 checkDuplicateVars (Separate vs) =
   let totalLength = length vs
-      nubbedLength = length $ nubBy (\(Var _ _ fn1) (Var _ _ fn2) -> fn1 == fn2) vs
+      nubbedLength = length $ nubBy (\v1 v2 -> getVarName v1 == getVarName v2) vs
    in if totalLength /= nubbedLength then (throw "Duplicate fields, not supported")
                                      else pure unit
 
@@ -153,20 +153,23 @@ genFuncDef ts nm (SQLFunc {name, vars: {in: invars}, set}) =
       <> "(map run" <> nm <> ") <$> " 
       <> (if set then "query " else "queryOne ")
       <> "(Query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\") "
-      <> "[" <> joinWith ", " ((\v -> "toSql " <> getInVarName v) <$> invars) <> "]"
+      <> "[" <> joinWith ", " ((\v -> "toSql " <> getVarName v) <$> invars) <> "]"
       <> " cl"
         where
           writeInVar :: Var -> String
           writeInVar v = let nf  = varToNamedField ts v
-                             invarname = getInVarName v
+                             invarname = getVarName v
                           in case nf of
                                   Nothing -> ""
                                   (Just (NamedField {field: (SQLField {newtype: NoAnn})})) -> invarname
                                   (Just (NamedField {field: (SQLField {newtype: (NewType nts)})})) -> invarname <> ": " <> "(" <> nts <> " " <>  invarname <> ")"
                                   (Just (NamedField {field: (SQLField {newtype: (Data d)})})) -> invarname
-          getInVarName :: Var -> String
-          getInVarName (Var (Just n) _     _    ) = n
-          getInVarName (Var Nothing  table field) = table <> "_" <> field
+
+getVarName :: Var -> String
+getVarName (Var (Just n) _     _    ) = n
+getVarName (Var Nothing  table field) = table <> "_" <> field
+
+
 
 getFieldName :: NamedField -> String
 getFieldName (NamedField {name: n, field: (SQLField {name})}) = maybe name id n
