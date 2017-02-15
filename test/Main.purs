@@ -53,12 +53,12 @@ sql = joinWith "\n" [ "blablablablababla;"
                     , "  WHERE id = myinvar;"
                     , "$$ LANGUAGE SQL;"
 
-                    , "CREATE FUNCTION myfunc2 (IN myinvar posts.id%TYPE, OUT posts.id%TYPE, OUT posts.activityId%TYPE, OUT posts.datePoint%TYPE, OUT posts.anumber%TYPE, OUT activities.description%TYPE)"
+                    , "CREATE FUNCTION myfunc2 (IN my_invar posts.id%TYPE, OUT posts.id%TYPE, OUT posts.activityId%TYPE, OUT posts.datePoint%TYPE, OUT posts.anumber%TYPE, OUT activities.description%TYPE)"
                     , "  -- outer join activities;"
                     , "AS $$"
                     , "SELECT p.id, p.activityId, p.datePoint, p.anumber, a.description"
                     , "from posts p outer join activities a on p.id = a.id"
-                    , "where p.id = myinvar;"
+                    , "where p.id = my_invar;"
                     , "$$ LANGUAGE SQL;" ]
 
 activities :: SQLTable
@@ -81,7 +81,7 @@ f1 = SQLFunc { name: "myfunc"
 
 f2 :: SQLFunc
 f2 = SQLFunc { name: "myfunc2"
-             , vars: { in: [Var (Just "myinvar") "posts" "id"]
+             , vars: { in: [Var (Just "my_invar") "posts" "id"]
                      , out: Separate [Var Nothing "posts" "id", Var Nothing "posts" "activityId", Var Nothing "posts" "datePoint", Var Nothing "posts" "anumber", Var Nothing "activities" "description"]}
              , set: false
              , outers: Just (Cons "activities" Nil)}
@@ -112,11 +112,11 @@ codegentest = describe "codegen" do
   it "should generate a type declaration for SQLFunc ADT" do
     shouldEqual (toEither $ genTypeDecl [activities, posts] f1) $ Right "myfunc :: forall eff obj. Client -> {myinvar :: UUID | obj} -> Aff (db :: DB | eff) (Array {id :: UUID, description :: String})"
     shouldEqual (toEither $ genTypeDecl [activities, posts] f2) $
-      Right "myfunc2 :: forall eff obj. Client -> {myinvar :: PostId | obj} -> Aff (db :: DB | eff) (Maybe {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number, description :: Maybe String})"
+      Right "myfunc2 :: forall eff obj. Client -> {my_invar :: PostId | obj} -> Aff (db :: DB | eff) (Maybe {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number, description :: Maybe String})"
 
   it "should generate a function definition" do
     shouldEqual (genFuncDef [activities, posts] "Res1" f1) ("myfunc cl {myinvar} = (map runRes1) <$> query (Query \"select * from myfunc($1)\") [toSql myinvar] cl")
-    shouldEqual (genFuncDef [activities, posts] "Res2" f2) ("myfunc2 cl {myinvar: (PostId myinvar)} = (map runRes2) <$> queryOne (Query \"select * from myfunc2($1)\") [toSql myinvar] cl")
+    shouldEqual (genFuncDef [activities, posts] "Res2" f2) ("myfunc2 cl {my_invar: (PostId my_invar)} = (map runRes2) <$> queryOne (Query \"select * from myfunc2($1)\") [toSql my_invar] cl")
 
   it "should generate a newtype" do
     shouldEqual

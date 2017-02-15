@@ -10,7 +10,6 @@ import Data.Maybe (Maybe(..), isJust, isNothing, maybe)
 import Data.Monoid (mempty)
 import Data.String (Pattern(..), contains, fromCharArray, toLower)
 import Data.Tuple (Tuple(Tuple))
-import Debug.Trace (spy)
 import Prelude (class Monad, Unit, bind, const, not, pure, unit, ($), (&&), (/=), (<$>), (<<<), (==), (>), (>>=))
 import SqlToPurs.Model (TypeAnn(NewType, Data, NoAnn), SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Int, Boolean, Numeric))
 import Text.Parsing.Parser (ParserT, fail)
@@ -29,7 +28,7 @@ dirP = (string "IN" >>= \_ -> pure In)
       <?> "IN or OUT"
 
 word :: forall m. (Monad m) => ParserT String m String
-word = some' alphaNum <?> "Variable Name"
+word = some' (alphaNum <|> char '_') <?> "Variable Name"
 
 betweenBrackets :: forall a m. (Monad m) => ParserT String m a -> ParserT String m a
 betweenBrackets = between (string "(" *> optional whiteSpace) (optional whiteSpace *> string ")")

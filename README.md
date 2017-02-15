@@ -53,3 +53,9 @@ You can even use it as just a type alias:
 ```
 type UUID = String
 ```
+
+Running tests
+================
+* Have pg database running with the name "sqltopurstest"
+* npm run setuptestsql
+* pulp test
