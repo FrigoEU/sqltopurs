@@ -5,17 +5,19 @@ import Data.Bounded (top, bottom)
 import Data.DateTime (DateTime(DateTime))
 import Data.Either (Either(Right), either)
 import Data.Foldable (foldl)
-import Data.List (List(..))
+import Data.List (List(..), delete)
 import Data.Maybe (Maybe(..), maybe)
 import Data.String (joinWith)
 import Database.Postgres (withClient, ConnectionInfo)
+import Main (runStack)
 import MyApp.SQL (querytest, inserttest)
 import Prelude (show, bind, (<>), ($), unit, pure)
 import SqlToPurs.Codegen (toEither, genForeign, genRun, genNewType, genFuncDef, genTypeDecl)
-import SqlToPurs.Model (TypeAnn(NoAnn, NewType), SQLField(SQLField), OutParams(Separate, FullTable), Var(Var), SQLTable(SQLTable), SQLFunc(SQLFunc), Type(Numeric, Date, Text, UUID))
+import SqlToPurs.Model (OutParams(Separate, FullTable), SQLField(SQLField), SQLFunc(..), SQLTable(SQLTable), Type(Numeric, Date, Text, UUID), TypeAnn(NoAnn, NewType), Var(Var))
 import SqlToPurs.Parsing (schemaP, functionsP)
 import Test.Spec (it, describe)
 import Test.Spec.Assertions (shouldEqual, fail)
+import Test.Spec.Assertions.Aff (expectError)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (run)
 import Test.SqlTestModel (MyADT(Two))
@@ -23,6 +25,7 @@ import Text.Parsing.Parser (runParser)
 
 main = run [consoleReporter] do
          parsingtest
+         parsingfailtest
          schemaparsingtest
          codegentest 
          sqltest
@@ -59,7 +62,8 @@ sql = joinWith "\n" [ "blablablablababla;"
                     , "SELECT p.id, p.activityId, p.datePoint, p.anumber, a.description"
                     , "from posts p outer join activities a on p.id = a.id"
                     , "where p.id = my_invar;"
-                    , "$$ LANGUAGE SQL;" ]
+                    , "$$ LANGUAGE SQL;"
+                    ]
 
 activities :: SQLTable
 activities = SQLTable { name: "activities"
@@ -89,13 +93,26 @@ f2 = SQLFunc { name: "myfunc2"
 
 parsingtest = describe "function parsing" do
   it "should parse the SQLFunc ADT's out of the sql script" do
-    either (\e -> fail $ "Parsing failed: " <> show e) 
-           (shouldEqual [f1, f2]) 
-           $ runParser sql functionsP
+    either (\e -> fail $ "Parsing Exception thrown: " <> e)
+           (\r -> either (\e -> fail $ "Parsing failed: " <> show e) (shouldEqual [f1, f2]) r) 
+           (runStack sql functionsP)
   it "should be able to parse functions without in or out vars" do
-    either (\e -> fail $ "Parsing failed: " <> show e) 
-           (shouldEqual [SQLFunc {name: "queryAllActivities", vars: {in: [], out: FullTable "activities"}, set: true, outers: Nothing}]) 
-           $ runParser "CREATE FUNCTION queryAllActivities () RETURNS SETOF activities AS $$ select * from activities; $$ LANGUAGE SQL; " functionsP
+    let result = [SQLFunc {name: "queryAllActivities", vars: {in: [], out: FullTable "activities"}, set: true, outers: Nothing}]
+    let sql' = "CREATE FUNCTION queryAllActivities () RETURNS SETOF activities AS $$ select * from activities; $$ LANGUAGE SQL; "
+    either (\e -> fail $ "Parsing Exception thrown: " <> e)
+           (\r -> either (\e -> fail $ "Parsing failed: " <> show e) (shouldEqual result) r) 
+           (runStack sql' functionsP)
+
+parsingfailtest = describe "parsing without return" do
+  it "is not supported" do
+    let sql2 = joinWith "\n" [ "CREATE FUNCTION del(IN in_id posts.id%TYPE)"
+                             , "AS $$"
+                             , "delete from posts where id = in_id"
+                             , "$$ LANGUAGE SQL"]
+    expectError $
+      either (\e -> fail $ "Parsing Exception thrown: " <> e)
+             (\r -> either (\e -> fail $ "Parsing failed: " <> show e) (shouldEqual []) r)
+             (runStack sql2 functionsP)
 
 
 {-- parsingtest = pure unit --}

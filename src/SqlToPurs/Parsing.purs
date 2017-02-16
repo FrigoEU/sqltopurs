@@ -2,6 +2,11 @@ module SqlToPurs.Parsing where
 
 import Control.Alt ((<|>))
 import Control.Apply ((*>))
+import Control.Monad.Eff.Exception (throw)
+import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
+import Control.Monad.Error.Class (throwError)
+import Control.Monad.Except (class MonadError)
+import Control.Monad.Trans.Class (lift)
 import Data.Array (catMaybes, filter, length, many, snoc, some)
 import Data.Either (Either(..))
 import Data.Foldable (foldMap, foldl)
@@ -10,6 +15,7 @@ import Data.Maybe (Maybe(..), isJust, isNothing, maybe)
 import Data.Monoid (mempty)
 import Data.String (Pattern(..), contains, fromCharArray, toLower)
 import Data.Tuple (Tuple(Tuple))
+import Debug.Trace (spy)
 import Prelude (class Monad, Unit, bind, const, not, pure, unit, ($), (&&), (/=), (<$>), (<<<), (==), (>), (>>=))
 import SqlToPurs.Model (TypeAnn(NewType, Data, NoAnn), SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Int, Boolean, Numeric))
 import Text.Parsing.Parser (ParserT, fail)
@@ -80,7 +86,7 @@ outersP = optionMaybe
 createFunctionP :: forall m. (Monad m) => ParserT String m String
 createFunctionP = (string "CREATE FUNCTION " <|> string "create function ") 
 
-functionP :: forall m. (Monad m) => ParserT String m SQLFunc
+functionP :: forall m. (Monad m, MonadError String m) => ParserT String m SQLFunc
 functionP = do
   createFunctionP
   name <- word
@@ -98,7 +104,7 @@ functionP = do
   if (isJust returnsFullTable && length outvars > 0) then fail "Can't have both pure table and out vars"
                                                      else pure unit
   out <- if isNothing returnsFullTable && length outvars == 0 
-            then fail "Function is not returning anything, not supported. If deleting, just pure the id"
+            then lift $ throwError "Function is not returning anything, not supported. If deleting, just pure the id"
             else pure $ maybe (Separate outvars) FullTable returnsFullTable 
   pure $ SQLFunc {name, vars: {in: invars, out}, set, outers}
     where 
@@ -109,13 +115,12 @@ functionP = do
       runVar (Tuple _ v) = v
 
 
-functionsP :: forall m. (Monad m) => ParserT String m (Array SQLFunc)
+functionsP :: forall m. (Monad m, MonadError String m) => ParserT String m (Array SQLFunc)
 functionsP = manyMaybe functionP
 
 manyMaybe :: forall m a. (Monad m) => ParserT String m a -> ParserT String m (Array a)
-manyMaybe p = foldl f mempty <$> many (maybeP p)
+manyMaybe p = foldl f [] <$> many (maybeP p)
   where
-    {-- f :: (Array a) --} 
     f l (Nothing) = l
     f l (Just sf) = snoc l sf
 
