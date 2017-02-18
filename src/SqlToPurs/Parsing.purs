@@ -84,7 +84,10 @@ outersP = optionMaybe
           )
 
 createFunctionP :: forall m. (Monad m) => ParserT String m String
-createFunctionP = (string "CREATE FUNCTION " <|> string "create function ") 
+createFunctionP = (string "CREATE FUNCTION "
+                   <|> string "create function "
+                   <|> string "CREATE OR REPLACE FUNCTION "
+                   <|> string "create or replace function ")
 
 functionP :: forall m. (Monad m, MonadError String m) => ParserT String m SQLFunc
 functionP = do
