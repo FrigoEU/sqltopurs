@@ -1,6 +1,6 @@
 {
   "name": "sqltopurs",
-  "version": "0.7.9",
+  "version": "0.7.10",
   "author": "Simon Van Casteren",
   "bin": {
     "sqltopurs": "index.js"
@@ -28,7 +28,7 @@
     "prepublish": "npm run build && npm run test",
 
     "schema": "/Applications/Postgres.app/Contents/Versions/9.6/bin/psql sqltopurstest < test.sql",
-    "maketestsql": "node sqltopurs.js -i test.sql -o test/Schema.purs -e extra.purs",
+    "maketestsql": "node sqltopurs.js -i test.sql -o test/Schema.purs -e extra.purs -m MyApp.SQL",
     "setuptestsql": "npm run schema && npm run maketestsql",
     "test-debug": "node-nightly --inspect --debug-brk runtestdevcomp.js"
   }

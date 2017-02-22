@@ -16,14 +16,14 @@ import SqlToPurs.Model (NamedField(..), OutParams(..), OuterJoined(..), SQLField
 
 type Exc a = Eff (err :: EXCEPTION) a
 
-header :: String
-header = joinWith "\n" [ "module MyApp.SQL where"
-                       , "import Prelude ((<$>), map, (<*>))"
-                       , "import Database.Postgres (Client, DB, query, Query(Query), queryOne)"
-                       , "import Control.Monad.Aff (Aff)"
-                       , "import Data.Maybe (Maybe)"
-                       , "import Data.Foreign (F)"
-                       , "import Database.Postgres.SqlValue (toSql, readSqlProp, fromSql, class IsSqlValue)" ]
+header :: String -> String
+header m = joinWith "\n" [ "module " <> m <> " where"
+                         , "import Prelude ((<$>), map, (<*>))"
+                         , "import Database.Postgres (Client, DB, query, Query(Query), queryOne)"
+                         , "import Control.Monad.Aff (Aff)"
+                         , "import Data.Maybe (Maybe)"
+                         , "import Data.Foreign (F)"
+                         , "import Database.Postgres.SqlValue (toSql, readSqlProp, fromSql, class IsSqlValue)" ]
 
 full :: Array SQLTable -> Array SQLFunc -> Either String String
 full ts fs = let withIndex = zip fs (range 0 (length fs - 1))

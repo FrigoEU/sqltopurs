@@ -27,15 +27,16 @@ import Text.Parsing.Parser.Pos (Position(..), initialPos)
 
 setup :: YargsSetup
 setup = usage "$0 -i Inputfile(s) -o Outputfile" 
-        <> example "$0 -i my.sql -o my.purs" "Turn SQL functions into PureScript functions"
+        <> example "$0 -i my.sql -o my.purs -m Sweetapp.SQL" "Turn SQL functions into PureScript functions"
 
 main :: forall t124. Eff ( err :: EXCEPTION , console :: CONSOLE , fs :: FS | t124 ) Unit
 main = runY setup $ go <$> yarg "i" ["in"]  (Just "Input File(s)") (Right "Needs at least one input file") true
                        <*> yarg "o" ["out"] (Just "Output File") (Right "Needs an output file") true
+                       <*> yarg "m" ["module"] (Just "Module name") (Right "Needs a module name") true
                        <*> yarg "e" ["extra"] (Just "Extra File to be inlined") (Left "") true
 
-go :: forall eff. String -> String -> String -> Eff (fs :: FS, console :: CONSOLE, err :: EXCEPTION | eff) Unit
-go i o e = runAff (throwException <<< error <<< show) (const $ log "Done") (do
+go :: forall eff. String -> String -> String -> String -> Eff (fs :: FS, console :: CONSOLE, err :: EXCEPTION | eff) Unit
+go i o m e = runAff (throwException <<< error <<< show) (const $ log "Done") (do
   let infiles = split (Pattern " ") i
   sql <- traverse (readTextFile UTF8) infiles <#> joinWith "\n"
   extra <- if e == "" then pure "" else readTextFile UTF8 e
@@ -46,7 +47,7 @@ go i o e = runAff (throwException <<< error <<< show) (const $ log "Done") (do
                           (\r -> either (\e -> throwError $ error $ "ParseError: " <> show e) pure r)
                           (runStack sql schemaP)
   gen <- either (\e -> throwError $ error $ e) pure $ full parsedSchemas parsedFunctions
-  writeTextFile UTF8 o (header <> "\n" <> extra <> "\n" <> gen))
+  writeTextFile UTF8 o (header m <> "\n" <> extra <> "\n" <> gen))
     *> pure unit
 
 runStack :: forall t8.
