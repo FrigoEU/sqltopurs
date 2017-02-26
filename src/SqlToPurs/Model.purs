@@ -5,7 +5,7 @@ import Data.List (List)
 import Data.Maybe (Maybe)
 import Prelude (show, class Show, class Eq, (<>))
 
-data Type = Int | Boolean | Numeric | UUID | Text | Date | TimestampWithoutTimeZone | Time
+data Type = Int | Boolean | Numeric | UUID | Text | Date | TimestampWithoutTimeZone | Time | PGArray Type
 data OutParams = FullTable String
                | Separate (Array Var)
 data Var = Var (Maybe String) String String

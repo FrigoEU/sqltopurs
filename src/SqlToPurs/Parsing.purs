@@ -16,8 +16,8 @@ import Data.Monoid (mempty)
 import Data.String (Pattern(..), contains, fromCharArray, toLower)
 import Data.Tuple (Tuple(Tuple))
 import Debug.Trace (spy)
-import Prelude (class Monad, Unit, bind, const, not, pure, unit, ($), (&&), (/=), (<$>), (<<<), (==), (>), (>>=))
-import SqlToPurs.Model (TypeAnn(NewType, Data, NoAnn), SQLTable(SQLTable), SQLField(SQLField), OutParams(FullTable, Separate), Var(Var), SQLFunc(SQLFunc), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Int, Boolean, Numeric))
+import Prelude (class Monad, Unit, bind, const, not, pure, unit, ($), (&&), (/=), (<#>), (<$>), (<<<), (==), (>), (>>=))
+import SqlToPurs.Model (OutParams(FullTable, Separate), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), Type(..), TypeAnn(NewType, Data, NoAnn), Var(Var))
 import Text.Parsing.Parser (ParserT, fail)
 import Text.Parsing.Parser.Combinators (between, choice, manyTill, option, optionMaybe, optional, sepBy, sepBy1, try, (<?>))
 import Text.Parsing.Parser.String (anyChar, char, oneOf, string, whiteSpace)
@@ -182,7 +182,8 @@ fieldP :: forall m. (Monad m) => String -> ParserT String m SQLField
 fieldP table = do
   name <- word
   whiteSpace
-  t <- typeP
+  t' <- typeP
+  t <- optionMaybe (string "[]") <#> maybe t' (\_ -> PGArray t')
   optional whiteSpace
   qualifiers <- foldMap toLower <$> sepBy (option "" $ choice [string "primary key", string "PRIMARY KEY", string "not null", string "NOT NULL", string "unique", string "UNIQUE"]) (string " ")
   let primarykey = contains (Pattern "primary key") qualifiers

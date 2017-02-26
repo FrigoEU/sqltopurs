@@ -12,7 +12,7 @@ import Data.String (joinWith, toLower)
 import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
 import Prelude (Unit, bind, flip, id, map, not, pure, show, unit, ($), (&&), (-), (/=), (<#>), (<$>), (<>), (==), (>), (>>=), (||))
-import SqlToPurs.Model (NamedField(..), OutParams(..), OuterJoined(..), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), Type(Time, TimestampWithoutTimeZone, Date, UUID, Text, Numeric, Boolean, Int), TypeAnn(Data, NewType, NoAnn), Var(Var))
+import SqlToPurs.Model (NamedField(..), OutParams(..), OuterJoined(..), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), Type(..), TypeAnn(Data, NewType, NoAnn), Var(Var))
 
 type Exc a = Eff (err :: EXCEPTION) a
 
@@ -140,6 +140,7 @@ typeToPurs UUID = "UUID"
 typeToPurs Date = "Date"
 typeToPurs TimestampWithoutTimeZone = "DateTime"
 typeToPurs Time = "Time"
+typeToPurs (PGArray t) = "Array (" <> typeToPurs t <> ")"
 
 
 genFuncDef :: Array SQLTable -> String -> SQLFunc -> String
