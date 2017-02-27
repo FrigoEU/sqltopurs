@@ -17,7 +17,7 @@ import Data.String (Pattern(..), contains, fromCharArray, toLower)
 import Data.Tuple (Tuple(Tuple))
 import Debug.Trace (spy)
 import Prelude (class Monad, Unit, bind, const, not, pure, unit, ($), (&&), (/=), (<#>), (<$>), (<<<), (==), (>), (>>=))
-import SqlToPurs.Model (OutParams(FullTable, Separate), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), Type(..), TypeAnn(NewType, Data, NoAnn), Var(Var))
+import SqlToPurs.Model (OutParams(FullTable, Separate), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), ToGen(..), Type(..), TypeAnn(NewType, Data, NoAnn), Var(Var))
 import Text.Parsing.Parser (ParserT, fail)
 import Text.Parsing.Parser.Combinators (between, choice, manyTill, option, optionMaybe, optional, sepBy, sepBy1, try, (<?>))
 import Text.Parsing.Parser.String (anyChar, char, oneOf, string, whiteSpace)
@@ -40,20 +40,13 @@ betweenBrackets :: forall a m. (Monad m) => ParserT String m a -> ParserT String
 betweenBrackets = between (string "(" *> optional whiteSpace) (optional whiteSpace *> string ")")
 
 varP :: forall m. (Monad m) => ParserT String m Var
-varP = try do name <- word
-              whiteSpace
-              tablename <- word
-              char '.'
-              fieldname <- word
-              string "%TYPE"
-              pure $ Var (Just name) tablename fieldname
-       <|>
-       do 
+varP = do name <- word
+          whiteSpace
           tablename <- word
           char '.'
           fieldname <- word
           string "%TYPE"
-          pure $ Var Nothing tablename fieldname
+          pure $ Var name tablename fieldname
 
 varAndDirP :: forall m. (Monad m) => ParserT String m (Tuple Dir Var)
 varAndDirP = do
@@ -109,7 +102,7 @@ functionP = do
   out <- if isNothing returnsFullTable && length outvars == 0 
             then lift $ throwError "Function is not returning anything, not supported. If deleting, just pure the id"
             else pure $ maybe (Separate outvars) FullTable returnsFullTable 
-  pure $ SQLFunc {name, vars: {in: invars, out}, set, outers}
+  pure $ SQLFunc {name, toGen: SQLFuncApp, vars: {in: invars, out}, set, outers}
     where 
       isIn :: Tuple Dir Var -> Boolean
       isIn (Tuple In v) = true

@@ -3,16 +3,26 @@ module SqlToPurs.Model where
 import Data.Generic (gEq, gShow, class Generic)
 import Data.List (List)
 import Data.Maybe (Maybe)
+import Data.Newtype (class Newtype)
 import Prelude (show, class Show, class Eq, (<>))
 
 data Type = Int | Boolean | Numeric | UUID | Text | Date | TimestampWithoutTimeZone | Time | PGArray Type
 data OutParams = FullTable String
                | Separate (Array Var)
-data Var = Var (Maybe String) String String
+data Var = Var String String String
 data TypeAnn = NoAnn | NewType String | Data String
-newtype SQLFunc = SQLFunc {name :: String, vars :: {in :: Array Var, out :: OutParams}, set :: Boolean, outers :: Maybe (List String)}
+newtype SQLFunc = SQLFunc {name :: String, toGen :: ToGen, vars :: {in :: Array Var, out :: OutParams}, set :: Boolean, outers :: Maybe (List String)}
+derive instance newtypeSQLFunc :: Newtype SQLFunc _
+
+data ToGen = SQLFuncApp
+           | GetAll
+
+derive instance genericToGen :: Generic ToGen
+
 newtype SQLField = SQLField {name :: String, table :: String, type :: Type, primarykey :: Boolean, notnull :: Boolean, newtype :: TypeAnn}
+derive instance newtypeSQLField :: Newtype SQLField _
 newtype SQLTable = SQLTable {name :: String, fields :: Array SQLField}
+derive instance newtypeSQLTable :: Newtype SQLTable _
 newtype NamedField = NamedField {name :: Maybe String, field :: SQLField}
 newtype OuterJoined = OuterJoined Boolean
 

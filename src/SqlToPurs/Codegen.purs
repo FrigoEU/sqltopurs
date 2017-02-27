@@ -8,11 +8,12 @@ import Data.Foldable (find, foldMap)
 import Data.List (List, elemIndex)
 import Data.Maybe (Maybe(Nothing, Just), isJust, maybe)
 import Data.Monoid (mempty)
-import Data.String (joinWith, toLower)
+import Data.Newtype (unwrap)
+import Data.String (drop, joinWith, take, toLower, toUpper)
 import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
-import Prelude (Unit, bind, flip, id, map, not, pure, show, unit, ($), (&&), (-), (/=), (<#>), (<$>), (<>), (==), (>), (>>=), (||))
-import SqlToPurs.Model (NamedField(..), OutParams(..), OuterJoined(..), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), Type(..), TypeAnn(Data, NewType, NoAnn), Var(Var))
+import Prelude (Unit, bind, flip, id, map, not, pure, show, unit, ($), (&&), (-), (/=), (<$>), (<>), (==), (>), (||))
+import SqlToPurs.Model (OutParams(FullTable, Separate), OuterJoined(OuterJoined), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), Type(PGArray, Time, TimestampWithoutTimeZone, Date, UUID, Text, Numeric, Boolean, Int), TypeAnn(Data, NewType, NoAnn), Var(Var))
 
 type Exc a = Eff (err :: EXCEPTION) a
 
@@ -23,73 +24,89 @@ header m = joinWith "\n" [ "module " <> m <> " where"
                          , "import Control.Monad.Aff (Aff)"
                          , "import Data.Maybe (Maybe)"
                          , "import Data.Foreign (F)"
+                         , "import Data.Newtype (class Newtype, unwrap)"
                          , "import Database.Postgres.SqlValue (toSql, readSqlProp, fromSql, class IsSqlValue)" ]
 
 full :: Array SQLTable -> Array SQLFunc -> Either String String
 full ts fs = let withIndex = zip fs (range 0 (length fs - 1))
-                 lines = flip map withIndex (\(Tuple s@(SQLFunc {name, vars: {in: invars, out: outvars}, set, outers}) i) -> 
-                                                let recname = "Res" <> show i
-                                                 in do 
-                                                   checkDuplicateVars outvars
-                                                   nt <- genNewType recname ts outvars outers
-                                                   run <- genRun recname ts outvars outers
-                                                   forn <- genForeign recname ts outvars outers
-                                                   typedecl <- genTypeDecl ts s
-                                                   let funcdef = genFuncDef ts recname s
-                                                   pure $ typedecl <> "\n" <> funcdef <> "\n" <> nt <> "\n" <> run <> "\n" <> forn <> "\n\n" ) 
+                 lines = flip map withIndex (genFullFunc ts)
                  line = (foldMap id <$> sequence lines) :: Exc String
               in toEither line
+
+genFullFunc :: Array SQLTable -> Tuple SQLFunc Int -> Exc String
+genFullFunc ts (Tuple s@(SQLFunc {name, vars: {in: invars, out: outvars@(Separate sepout)}, set, outers}) i) = do
+  let recname = "Res" <> show i
+  checkDuplicateVars sepout
+  namedFieldsOut' <- matchOutVars ts sepout outers
+  namedFieldsIn' <- matchInVars ts invars
+  let nt = genNewType namedFieldsOut' recname
+  let nti = genNewtypeInstance recname
+  let forn = genForeign namedFieldsOut' recname
+  let typedecl = genTypeDecl namedFieldsIn' namedFieldsOut' set name
+  let funcdef = genFuncDef name recname namedFieldsIn' set
+  pure $ typedecl <> "\n" <> funcdef <> "\n" <> nt <> "\n" <> nti <> "\n" <> forn <> "\n\n"
+genFullFunc ts (Tuple s@(SQLFunc {name, vars: {in: invars, out: outvars@(FullTable tableN)}, set, outers}) _) = do
+  t <- maybe (throw $ "couldn't find table " <> tableN) pure (findTable ts tableN)
+  let recname = tableToNewtypeName t
+  let namedFieldsOut' = tableToOutMatchedFields t
+  namedFieldsIn' <- matchInVars ts invars
+  let nt = genNewType namedFieldsOut' recname
+  let nti = genNewtypeInstance recname
+  let forn = genForeign namedFieldsOut' recname
+  let typedecl = genTypeDecl namedFieldsIn' namedFieldsOut' set name
+  let funcdef = genFuncDef name recname namedFieldsIn' set
+  pure $ typedecl <> "\n" <> funcdef <> "\n" <> nt <> "\n" <> nti <> "\n" <> forn <> "\n\n"
 
 toEither :: forall a. Exc a -> Either String a
 toEither effA =
   let wrapped = Right <$> effA
    in runPure $ catchException (\e -> pure $ Left $ message e) wrapped
 
-tableToNamedFields :: Array SQLTable -> String -> Maybe (Array NamedField)
-tableToNamedFields ts tableN = find (\(SQLTable {name}) -> toLower name == toLower tableN) ts >>= \(SQLTable {fields}) -> pure $ (\f -> NamedField {name: Nothing, field: f}) <$> fields
+findTable :: Array SQLTable -> String -> Maybe SQLTable
+findTable ts tableN = find (\(SQLTable {name}) -> toLower name == toLower tableN) ts
 
-varToNamedField :: Array SQLTable -> Var -> Maybe NamedField
-varToNamedField ts (Var n tableN fieldN) = do
-  fields <- tableToNamedFields ts tableN
-  (NamedField {field}) <- find (\(NamedField {field: (SQLField {name})}) -> toLower name == toLower fieldN ) fields
-  pure $ NamedField {name: n, field: field}
+tableToOutMatchedFields :: SQLTable -> Array MatchedOutField
+tableToOutMatchedFields (SQLTable {fields}) =
+  (\f -> MatchedOutField Nothing f (OuterJoined false)) <$> fields
 
-checkDuplicateVars :: OutParams -> Exc Unit
-checkDuplicateVars (FullTable _) = pure unit
-checkDuplicateVars (Separate vs) =
+checkDuplicateVars :: Array Var -> Exc Unit
+checkDuplicateVars vs =
   let totalLength = length vs
       nubbedLength = length $ nubBy (\v1 v2 -> getVarName v1 == getVarName v2) vs
    in if totalLength /= nubbedLength then (throw "Duplicate fields, not supported")
                                      else pure unit
 
-genTypeDecl :: Array SQLTable -> SQLFunc -> Exc String
-genTypeDecl ts (SQLFunc {name, vars: {in: invars, out: outvars}, set, outers}) = do
-  outrec <- outParamsToRecord ts outvars outers
-  infields <- varsToNamedFields ts invars outers
-  pure $ name
-         <> " :: forall eff " <> (if length infields > 0 then "obj" else "") <>". Client -> " 
-         <> namedFieldsToRecord (Just "obj") (infields <#> \f -> Tuple f (OuterJoined false))
+genTypeDecl :: Array MatchedInField -> Array MatchedOutField -> Boolean -> String -> String
+genTypeDecl infields outfields set name =
+  let outrec = toRecord Nothing outfields
+      inrec = toRecord (Just "obj") infields
+   in name
+         <> " :: forall eff " <> (if length infields > 0 then "obj" else "") <>". Client -> "
+         <> inrec
          <> (if length infields > 0 then " -> " else "")
          <> "Aff (db :: DB | eff) "
          <> "(" <> (if set then "Array " else "Maybe ") <> outrec <> ")" -- queryOne returns Maybe
 
-genNewType :: String -> Array SQLTable -> OutParams -> Maybe (List String) -> Exc String
-genNewType nm ts outp outers = outParamsToRecord ts outp outers >>= \record -> pure $ "newtype " <> nm <> " = " <> nm <> " " <> record
+tableToNewtypeName :: SQLTable -> String
+tableToNewtypeName (SQLTable t) = capitalize t.name <> "Rec"
 
-genRun :: String -> Array SQLTable -> OutParams -> Maybe (List String) -> Exc String
-genRun nm ts outp outers = outParamsToRecord ts outp outers >>= \record -> pure $ "run" <> nm <> " :: " <> nm <> " -> " <> record <> "\n" <> "run" <> nm <> " (" <> nm <> " a) = a"
+genNewType :: Array MatchedOutField -> String -> String
+genNewType nf nm =
+  "newtype " <> nm <> " = " <> nm <> " " <> toRecord Nothing nf
 
-genForeign :: String -> Array SQLTable -> OutParams -> Maybe (List String) -> Exc String
-genForeign nm ts outp outers = do
-  fields <- outParamsToNamedFields ts outp outers
-  let objSugar =  "{" <> joinWith ", " (map (\(Tuple f _) -> getFieldName f <> ": _") fields) <> "}"
-  pure $ "instance isSqlValue" <> nm <> " :: IsSqlValue " <> nm <>" where " 
-          <> "\n" <> " toSql a = toSql \"\"" 
-          <> "\n" <> " fromSql obj = " <> nm <> " <$> " <> "(" <> objSugar <> " <$> " <> (joinWith " <*> " (map genReadProp fields)) <> ")"
+genNewtypeInstance :: String -> String
+genNewtypeInstance nm = "derive instance newtype" <> nm <> " :: Newtype " <> nm <> " _ "
 
-genReadProp :: Tuple NamedField OuterJoined -> String
-genReadProp (Tuple nf@(NamedField {field: (SQLField {primarykey, notnull, type: t, newtype: nt})}) (OuterJoined oj))=
-  let name = getFieldName nf
+genForeign :: Array MatchedOutField -> String -> String
+genForeign fields nm =
+  let objSugar =  "{" <> joinWith ", " (map (\m -> getOutFieldName m <> ": _") fields) <> "}"
+  in  "instance isSqlValue" <> nm <> " :: IsSqlValue " <> nm <>" where "
+        <> "\n" <> " toSql a = toSql \"\""
+        <> "\n" <> " fromSql obj = " <> nm <> " <$> " <> "(" <> objSugar <> " <$> " <> (joinWith " <*> " (map genReadProp fields)) <> ")"
+
+genReadProp :: MatchedOutField -> String
+genReadProp m@(MatchedOutField _ (SQLField {primarykey, notnull, type: t, newtype: nt}) (OuterJoined oj))=
+  let name = getOutFieldName m
       noNewtypeNoNullable = "readSqlProp \"" <> toLower name <> "\" obj"
       noNewtypeNoNullableWithType tp =  noNewtypeNoNullable <> " :: F " <> tp
       noNewtypeWithNullableWithType tp = noNewtypeNoNullable <> " :: F (Maybe "<> tp <> ")"
@@ -103,28 +120,53 @@ genReadProp (Tuple nf@(NamedField {field: (SQLField {primarykey, notnull, type: 
             NewType nts -> if nullable then withNewTypeWithNullableWithType nts else withNewTypeNoNullableWithType nts
         ) <> ")"
 
-outParamsToNamedFields :: Array SQLTable -> OutParams -> Maybe (List String) -> Exc (Array (Tuple NamedField OuterJoined))
-outParamsToNamedFields ts (FullTable tableN) _ = maybe (throw $ "Table " <> tableN <> "not found!") pure (tableToNamedFields ts tableN <#> map (\f -> Tuple f (OuterJoined false)))
-outParamsToNamedFields ts (Separate vars) outers =
-  varsToNamedFields ts vars outers
-  >>= \nfs -> pure $ nfs <#> (\(nf@(NamedField {field: SQLField {table}})) -> Tuple nf (OuterJoined $ isJust (elemIndex (toLower table) outers')))
-  where outers' = maybe mempty id outers
+matchOutVars :: Array SQLTable -> Array Var -> Maybe (List String) -> Exc (Array MatchedOutField)
+matchOutVars ts vars outers = flip traverse vars go
+  where
+  outers' = maybe mempty id outers
+  go v = do
+    foundField <- findField ts v
+    let outerjoined = OuterJoined $ isJust (elemIndex (toLower (unwrap foundField).table) outers')
+    pure $ MatchedOutField (Just v) foundField outerjoined
 
-varsToNamedFields :: Array SQLTable -> Array Var -> Maybe (List String) -> Exc (Array NamedField)
-varsToNamedFields ts vars outs = traverse (\v -> maybe (throw $ show v <> "not found!") pure $ varToNamedField ts v) vars
+matchInVars :: Array SQLTable -> Array Var -> Exc (Array MatchedInField)
+matchInVars ts vars = flip traverse vars go
+  where
+  go v = do
+    foundField <- findField ts v
+    pure $ MatchedInField v foundField
 
-outParamsToRecord :: Array SQLTable -> OutParams -> Maybe (List String) -> Exc String
-outParamsToRecord ts outp outers = namedFieldsToRecord Nothing <$> (outParamsToNamedFields ts outp outers)
 
-namedFieldsToRecord :: Maybe String -> Array (Tuple NamedField OuterJoined) -> String
-namedFieldsToRecord _   [] = ""
-namedFieldsToRecord ext fs = "{" <> joinWith ", " (namedFieldToPurs <$> fs) <> (maybe "" (\obj -> " | " <> obj) ext) <> "}" 
+findField :: Array SQLTable -> Var -> Exc SQLField
+findField ts v@(Var name tableN fieldN) = do
+    foundTable <- maybe
+                    (throw $ "Table not found: " <> tableN)
+                    pure
+                    (find (\(SQLTable {name}) -> toLower name == toLower tableN) ts)
+    maybe
+      (throw $ "Field not found: " <> tableN)
+      pure
+      (find (\(SQLField {name}) -> toLower name == toLower fieldN) (unwrap foundTable).fields)
 
-namedFieldToPurs :: Tuple NamedField OuterJoined -> String
-namedFieldToPurs (Tuple nf@(NamedField {field: (SQLField {type: t, primarykey, notnull, newtype: nt})}) (OuterJoined oj)) = 
-  name <> " :: " <> (if primarykey || notnull && (not oj) then "" else "Maybe ") <> annotationToPurs t nt
+toRecord :: forall a. MatchedField a => Maybe String -> Array a -> String
+toRecord _   [] = ""
+toRecord ext fs = "{" <> joinWith ", " (toPurs <$> fs) <> (maybe "" (\obj -> " | " <> obj) ext) <> "}"
+
+-- I made this into two seperate types and a class because I don't want In and Out fields to be allowed in the same Array
+data MatchedInField = MatchedInField Var SQLField
+data MatchedOutField = MatchedOutField (Maybe Var) SQLField OuterJoined
+class MatchedField a where
+  toPurs :: a -> String
+
+instance matchedFieldIn :: MatchedField MatchedInField where
+  toPurs (MatchedInField (Var name _ _) (SQLField {type: t, primarykey, notnull, newtype: nt})) =
+    name <> " :: " <> (if primarykey || notnull then "" else "Maybe ") <> annotationToPurs t nt
+
+instance matchedFieldOut :: MatchedField MatchedOutField where
+  toPurs m@(MatchedOutField v (SQLField {name: n, type: t, primarykey, notnull, newtype: nt}) (OuterJoined oj)) =
+    name <> " :: " <> (if primarykey || notnull && (not oj) then "" else "Maybe ") <> annotationToPurs t nt
     where
-      name = getFieldName nf
+      name = getOutFieldName m
 
 annotationToPurs :: Type -> TypeAnn -> String
 annotationToPurs t NoAnn = typeToPurs t
@@ -142,40 +184,34 @@ typeToPurs TimestampWithoutTimeZone = "DateTime"
 typeToPurs Time = "Time"
 typeToPurs (PGArray t) = "Array (" <> typeToPurs t <> ")"
 
-
-genFuncDef :: Array SQLTable -> String -> SQLFunc -> String
-genFuncDef ts nm (SQLFunc {name, vars: {in: invars}, set}) =
-    name 
+genFuncDef :: String -> String -> Array MatchedInField -> Boolean -> String
+genFuncDef name outRecName invars set =
+    name
       <> " cl "
-      <> (if (length invars > 0) 
-             then "{" <> (joinWith ", " (writeInVar <$> invars)) <> "}" 
-             else "")
+      <> (if (length invars > 0) then "obj" else "")
       <> " = "
-      <> "(map run" <> nm <> ") <$> " 
+      <> "(map unwrap) <$> "
       <> (if set then "query " else "queryOne ")
-      <> "(Query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\") "
-      <> "[" <> joinWith ", " ((\v -> "toSql " <> getVarName v) <$> invars) <> "]"
+      <> "(Query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\" :: " <> genQueryType <> ") "
+      <> "[" <> joinWith ", " ((\v -> "toSql " <> writeInVar v) <$> invars) <> "]"
       <> " cl"
         where
-          writeInVar :: Var -> String
-          writeInVar v = let nf  = varToNamedField ts v
-                             invarname = getVarName v
-                          in case nf of
-                                  Nothing -> ""
-                                  (Just (NamedField {field: (SQLField {newtype: NoAnn})})) -> invarname
-                                  (Just (NamedField {field: (SQLField {newtype: (NewType nts)})})) -> invarname <> ": " <> "(" <> nts <> " " <>  invarname <> ")"
-                                  (Just (NamedField {field: (SQLField {newtype: (Data d)})})) -> invarname
+          writeInVar :: MatchedInField -> String
+          writeInVar m@(MatchedInField v (SQLField {newtype: NoAnn})) = "obj." <> getVarName v
+          writeInVar m@(MatchedInField v (SQLField {newtype: (NewType _)})) = "(unwrap obj." <> getVarName v <> ")"
+          writeInVar m@(MatchedInField v (SQLField {newtype: (Data _)})) = "obj." <> getVarName v
+          genQueryType = if set then "Query (Array " <> outRecName <> ")" else "Query " <> outRecName
+
 
 getVarName :: Var -> String
-getVarName (Var (Just n) _     _    ) = n
-getVarName (Var Nothing  table field) = table <> "_" <> field
+getVarName (Var n _ _) = n
 
-
-
-getFieldName :: NamedField -> String
-getFieldName (NamedField {name: n, field: (SQLField {name})}) = maybe name id n
-
+getOutFieldName :: MatchedOutField -> String
+getOutFieldName (MatchedOutField v (SQLField {name}) _) = maybe name getVarName v
 
 toQuestionmarks :: forall a. Array a -> String
 toQuestionmarks [] = ""
 toQuestionmarks as = joinWith "," $ map (\i -> "$" <> show i) (1 .. (length as))
+
+capitalize :: String -> String
+capitalize s = toUpper (take 1 s) <> drop 1 s
