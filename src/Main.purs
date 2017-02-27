@@ -20,7 +20,7 @@ import Node.FS.Aff (writeTextFile, readTextFile)
 import Node.Yargs.Applicative (yarg, runY)
 import Node.Yargs.Setup (YargsSetup, example, usage)
 import Prelude (Unit, bind, const, pure, show, unit, ($), (<#>), (<$>), (<*>), (<<<), (<>), (==))
-import SqlToPurs.Codegen (header, full)
+import SqlToPurs.Codegen (full, header, toEither)
 import SqlToPurs.Parsing (schemaP, functionsP)
 import Text.Parsing.Parser (ParseError, ParseState(..), ParserT, runParserT)
 import Text.Parsing.Parser.Pos (Position(..), initialPos)
@@ -46,7 +46,7 @@ go i o m e = runAff (throwException <<< error <<< show) (const $ log "Done") (do
   parsedSchemas <- either (\e -> throwError $ error $ "Parsing threw: " <> e)
                           (\r -> either (\e -> throwError $ error $ "ParseError: " <> show e) pure r)
                           (runStack sql schemaP)
-  gen <- either (\e -> throwError $ error $ e) pure $ full parsedSchemas parsedFunctions
+  gen <- either (\e -> throwError $ error $ e) pure $ (toEither $ full parsedSchemas parsedFunctions)
   writeTextFile UTF8 o (header m <> "\n" <> extra <> "\n" <> gen))
     *> pure unit
 

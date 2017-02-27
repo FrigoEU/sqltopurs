@@ -2,7 +2,7 @@ module SqlToPurs.Codegen where
 
 import Control.Monad.Eff (runPure, Eff)
 import Control.Monad.Eff.Exception (EXCEPTION, throw, message, catchException)
-import Data.Array (length, nubBy, range, zip, (..))
+import Data.Array (length, mapWithIndex, nubBy, range, zip, (..))
 import Data.Either (Either(Left, Right))
 import Data.Foldable (find, foldMap)
 import Data.List (List, elemIndex)
@@ -12,8 +12,8 @@ import Data.Newtype (unwrap)
 import Data.String (drop, joinWith, take, toLower, toUpper)
 import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
-import Prelude (Unit, bind, flip, id, map, not, pure, show, unit, ($), (&&), (-), (/=), (<$>), (<>), (==), (>), (||))
-import SqlToPurs.Model (OutParams(FullTable, Separate), OuterJoined(OuterJoined), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), Type(PGArray, Time, TimestampWithoutTimeZone, Date, UUID, Text, Numeric, Boolean, Int), TypeAnn(Data, NewType, NoAnn), Var(Var))
+import Prelude (Unit, append, bind, flip, id, map, not, pure, show, unit, (#), ($), (&&), (-), (/=), (<#>), (<$>), (<>), (==), (>), (>>>), (||))
+import SqlToPurs.Model (OutParams(FullTable, Separate), OuterJoined(OuterJoined), SQLField(..), SQLFunc(SQLFunc), SQLTable(..), Type(PGArray, Time, TimestampWithoutTimeZone, Date, UUID, Text, Numeric, Boolean, Int), TypeAnn(Data, NewType, NoAnn), Var(Var))
 
 type Exc a = Eff (err :: EXCEPTION) a
 
@@ -27,14 +27,102 @@ header m = joinWith "\n" [ "module " <> m <> " where"
                          , "import Data.Newtype (class Newtype, unwrap)"
                          , "import Database.Postgres.SqlValue (toSql, readSqlProp, fromSql, class IsSqlValue)" ]
 
-full :: Array SQLTable -> Array SQLFunc -> Either String String
-full ts fs = let withIndex = zip fs (range 0 (length fs - 1))
-                 lines = flip map withIndex (genFullFunc ts)
-                 line = (foldMap id <$> sequence lines) :: Exc String
-              in toEither line
+full :: Array SQLTable -> Array SQLFunc -> Exc String
+full ts fs = do
+  let gennedTableNewtypes =
+        ts <#> (\t -> genNewtypeForTable t <> "\n" <>
+                      genNewtypeInstanceForTable t <> "\n" <>
+                      genForeignForTable t <> "\n")
+           # joinWith "\n"
+  gennedCrudDefinitions <-
+        ts <#> (\t -> do
+                 let getalls = genTypeDeclForGetAll t <> "\n" <> genFuncDefForGetAll t <> "\n"
+                 let idVar = (Var "id" (unwrap t).name "id")
+                 id <- findField ts idVar <#> (MatchedInField idVar)
+                 let getones = genTypeDeclForGetOne id t <> "\n" <> genFuncDefForGetOne id t <> "\n"
+                 let deletes = genTypeDeclForDelete id t <> "\n" <> genFuncDefForDelete id t <> "\n"
+                 let upserts = genTypeDeclForUpsert t <> "\n" <> genFuncDefForUpsert t <> "\n"
+                 pure $ joinWith "\n" [getalls, getones, deletes, upserts]
+                 )
+           # sequence
+           <#> joinWith "\n"
+  gennedFunctions <- fs `flip mapWithIndex` (genFullFunc ts)
+                        # sequence
+                        <#> joinWith "\n"
+  pure $ joinWith "\n" [
+    "-- Table newtypes",
+    gennedTableNewtypes,
+    "-- CRUD definitions",
+    gennedCrudDefinitions,
+    "-- PGSQL Function definitions",
+    gennedFunctions
+    ]
 
-genFullFunc :: Array SQLTable -> Tuple SQLFunc Int -> Exc String
-genFullFunc ts (Tuple s@(SQLFunc {name, vars: {in: invars, out: outvars@(Separate sepout)}, set, outers}) i) = do
+genTypeDeclForGetAll :: SQLTable -> String
+genTypeDeclForGetAll t = genTypeDecl [] (tableToOutMatchedFields t) true ("getAll" <> capitalize (unwrap t).name)
+
+genFuncDefForGetAll :: SQLTable -> String
+genFuncDefForGetAll t =
+  genFuncDef
+    ("getAll" <> capitalize (unwrap t).name)
+    (tableToNewtypeName t)
+    []
+    true
+    (genQueryForGetAll t)
+
+genTypeDeclForGetOne :: MatchedInField -> SQLTable -> String
+genTypeDeclForGetOne id t =
+  genTypeDecl
+    [id]
+    (tableToOutMatchedFields t)
+    false
+    ("getOneFrom" <> capitalize (unwrap t).name)
+
+genFuncDefForGetOne :: MatchedInField -> SQLTable -> String
+genFuncDefForGetOne id t =
+  genFuncDef
+    ("getOneFrom" <> capitalize (unwrap t).name)
+    (tableToNewtypeName t)
+    [id]
+    false
+    (genQueryForGetOne id t)
+
+genTypeDeclForDelete :: MatchedInField -> SQLTable -> String
+genTypeDeclForDelete id t =
+  genTypeDecl
+    [id]
+    (tableToOutMatchedFields t)
+    false
+    ("deleteFrom" <> capitalize (unwrap t).name)
+
+genFuncDefForDelete :: MatchedInField -> SQLTable -> String
+genFuncDefForDelete id t =
+  genFuncDef
+    ("deleteFrom" <> capitalize (unwrap t).name)
+    (tableToNewtypeName t)
+    [id]
+    false
+    (genQueryForDelete id t)
+
+genTypeDeclForUpsert :: SQLTable -> String
+genTypeDeclForUpsert t =
+  genTypeDecl
+    (tableToInMatchedFields t)
+    (tableToOutMatchedFields t)
+    false
+    ("upsert" <> capitalize (unwrap t).name)
+
+genFuncDefForUpsert :: SQLTable -> String
+genFuncDefForUpsert t =
+  genFuncDef
+    ("upsert" <> capitalize (unwrap t).name)
+    (tableToNewtypeName t)
+    (tableToInMatchedFields t)
+    false
+    (genQueryForUpsert t)
+
+genFullFunc :: Array SQLTable -> Int -> SQLFunc -> Exc String
+genFullFunc ts i s@(SQLFunc {name, vars: {in: invars, out: outvars@(Separate sepout)}, set, outers})  = do
   let recname = "Res" <> show i
   checkDuplicateVars sepout
   namedFieldsOut' <- matchOutVars ts sepout outers
@@ -43,19 +131,27 @@ genFullFunc ts (Tuple s@(SQLFunc {name, vars: {in: invars, out: outvars@(Separat
   let nti = genNewtypeInstance recname
   let forn = genForeign namedFieldsOut' recname
   let typedecl = genTypeDecl namedFieldsIn' namedFieldsOut' set name
-  let funcdef = genFuncDef name recname namedFieldsIn' set
+  let funcdef = genFuncDef name recname namedFieldsIn' set (genQueryForFunc name namedFieldsIn')
   pure $ typedecl <> "\n" <> funcdef <> "\n" <> nt <> "\n" <> nti <> "\n" <> forn <> "\n\n"
-genFullFunc ts (Tuple s@(SQLFunc {name, vars: {in: invars, out: outvars@(FullTable tableN)}, set, outers}) _) = do
+genFullFunc ts _ s@(SQLFunc {name, vars: {in: invars, out: outvars@(FullTable tableN)}, set, outers}) = do
   t <- maybe (throw $ "couldn't find table " <> tableN) pure (findTable ts tableN)
   let recname = tableToNewtypeName t
   let namedFieldsOut' = tableToOutMatchedFields t
   namedFieldsIn' <- matchInVars ts invars
-  let nt = genNewType namedFieldsOut' recname
-  let nti = genNewtypeInstance recname
-  let forn = genForeign namedFieldsOut' recname
   let typedecl = genTypeDecl namedFieldsIn' namedFieldsOut' set name
-  let funcdef = genFuncDef name recname namedFieldsIn' set
-  pure $ typedecl <> "\n" <> funcdef <> "\n" <> nt <> "\n" <> nti <> "\n" <> forn <> "\n\n"
+  let funcdef = genFuncDef name recname namedFieldsIn' set (genQueryForFunc name namedFieldsIn')
+  pure $ typedecl <> "\n" <> funcdef <> "\n\n"
+
+genNewtypeForTable :: SQLTable -> String
+genNewtypeForTable t =
+  genNewType (tableToOutMatchedFields t) (tableToNewtypeName t)
+
+genNewtypeInstanceForTable :: SQLTable -> String
+genNewtypeInstanceForTable t = genNewtypeInstance (tableToNewtypeName t)
+
+genForeignForTable :: SQLTable -> String
+genForeignForTable t =
+  genForeign (tableToOutMatchedFields t) (tableToNewtypeName t)
 
 toEither :: forall a. Exc a -> Either String a
 toEither effA =
@@ -68,6 +164,10 @@ findTable ts tableN = find (\(SQLTable {name}) -> toLower name == toLower tableN
 tableToOutMatchedFields :: SQLTable -> Array MatchedOutField
 tableToOutMatchedFields (SQLTable {fields}) =
   (\f -> MatchedOutField Nothing f (OuterJoined false)) <$> fields
+
+tableToInMatchedFields :: SQLTable -> Array MatchedInField
+tableToInMatchedFields (SQLTable {fields}) =
+  (\(SQLField f) -> MatchedInField (Var f.name f.table f.name) (SQLField f)) <$> fields
 
 checkDuplicateVars :: Array Var -> Exc Unit
 checkDuplicateVars vs =
@@ -184,24 +284,39 @@ typeToPurs TimestampWithoutTimeZone = "DateTime"
 typeToPurs Time = "Time"
 typeToPurs (PGArray t) = "Array (" <> typeToPurs t <> ")"
 
-genFuncDef :: String -> String -> Array MatchedInField -> Boolean -> String
-genFuncDef name outRecName invars set =
-    name
-      <> " cl "
-      <> (if (length invars > 0) then "obj" else "")
-      <> " = "
-      <> "(map unwrap) <$> "
-      <> (if set then "query " else "queryOne ")
-      <> "(Query \"select * from " <> name <> "(" <> toQuestionmarks invars <> ")\" :: " <> genQueryType <> ") "
-      <> "[" <> joinWith ", " ((\v -> "toSql " <> writeInVar v) <$> invars) <> "]"
-      <> " cl"
-        where
-          writeInVar :: MatchedInField -> String
-          writeInVar m@(MatchedInField v (SQLField {newtype: NoAnn})) = "obj." <> getVarName v
-          writeInVar m@(MatchedInField v (SQLField {newtype: (NewType _)})) = "(unwrap obj." <> getVarName v <> ")"
-          writeInVar m@(MatchedInField v (SQLField {newtype: (Data _)})) = "obj." <> getVarName v
-          genQueryType = if set then "Query (Array " <> outRecName <> ")" else "Query " <> outRecName
+genFuncDef :: String -> String -> Array MatchedInField -> Boolean -> String -> String
+genFuncDef name outRecName invars set query =
+    name <> " cl " <> (if (length invars > 0) then "obj" else "") <> " = (map unwrap) <$> "
+    <> (if set then "query " else "queryOne ")
+    <> parens ("Query " <> quotes query <> " :: Query " <> outRecName) <> " "
+    <> squareBrackets (invars <#> (writeInVar >>> append "toSql ") # joinWith ", ")
+    <> " cl"
 
+parens s = "(" <> s <> ")"
+squareBrackets s = "[" <> s <> "]"
+quotes s = "\"" <> s <> "\""
+
+writeInVar :: MatchedInField -> String
+writeInVar m@(MatchedInField v (SQLField {newtype: NoAnn})) = "obj." <> getVarName v
+writeInVar m@(MatchedInField v (SQLField {newtype: (NewType _)})) = "(unwrap obj." <> getVarName v <> ")"
+writeInVar m@(MatchedInField v (SQLField {newtype: (Data _)})) = "obj." <> getVarName v
+
+-- genQueryType outRecName = if set then "Query (Array " <> outRecName <> ")" else "Query " <> outRecName
+
+genQueryForFunc :: String -> Array MatchedInField -> String
+genQueryForFunc name invars = "select * from " <> name <> parens (toQuestionmarks invars)
+
+genQueryForGetAll :: SQLTable -> String
+genQueryForGetAll t = "select * from " <> (unwrap t).name
+
+genQueryForGetOne :: MatchedInField -> SQLTable -> String
+genQueryForGetOne (MatchedInField v _) t = "select * from " <> (unwrap t).name <> " where " <> getVarName v <> " = $1"
+
+genQueryForDelete :: MatchedInField -> SQLTable -> String
+genQueryForDelete (MatchedInField v _) t = "delete from " <> (unwrap t).name <> " where " <> getVarName v <> " = $1 RETURNING *"
+
+genQueryForUpsert :: SQLTable -> String
+genQueryForUpsert t = "insert into " <> (unwrap t).name <> " values " <> parens (toQuestionmarks (tableToInMatchedFields t)) <> " ON CONFLICT DO UPDATE RETURNING *"
 
 getVarName :: Var -> String
 getVarName (Var n _ _) = n

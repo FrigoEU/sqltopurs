@@ -11,13 +11,8 @@ data OutParams = FullTable String
                | Separate (Array Var)
 data Var = Var String String String
 data TypeAnn = NoAnn | NewType String | Data String
-newtype SQLFunc = SQLFunc {name :: String, toGen :: ToGen, vars :: {in :: Array Var, out :: OutParams}, set :: Boolean, outers :: Maybe (List String)}
+newtype SQLFunc = SQLFunc {name :: String, vars :: {in :: Array Var, out :: OutParams}, set :: Boolean, outers :: Maybe (List String)}
 derive instance newtypeSQLFunc :: Newtype SQLFunc _
-
-data ToGen = SQLFuncApp
-           | GetAll
-
-derive instance genericToGen :: Generic ToGen
 
 newtype SQLField = SQLField {name :: String, table :: String, type :: Type, primarykey :: Boolean, notnull :: Boolean, newtype :: TypeAnn}
 derive instance newtypeSQLField :: Newtype SQLField _

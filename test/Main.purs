@@ -15,8 +15,8 @@ import Database.Postgres (withClient, ConnectionInfo)
 import Main (runStack)
 import MyApp.SQL (querytest, inserttest)
 import Prelude (bind, pure, show, unit, ($), (*>), (<>), (>>>))
-import SqlToPurs.Codegen (genForeign, genFuncDef, genNewType, genNewtypeInstance, genTypeDecl, matchInVars, matchOutVars, tableToNewtypeName, tableToOutMatchedFields, toEither)
-import SqlToPurs.Model (OutParams(Separate, FullTable), SQLField(SQLField), SQLFunc(..), SQLTable(SQLTable), ToGen(..), Type(Numeric, Date, Text, UUID), TypeAnn(NoAnn, NewType), Var(Var))
+import SqlToPurs.Codegen (genForeign, genFuncDef, genNewType, genNewtypeInstance, genQueryForFunc, genTypeDecl, matchInVars, matchOutVars, tableToNewtypeName, tableToOutMatchedFields, toEither)
+import SqlToPurs.Model (OutParams(Separate, FullTable), SQLField(SQLField), SQLFunc(..), SQLTable(SQLTable), Type(Numeric, Date, Text, UUID), TypeAnn(NoAnn, NewType), Var(Var))
 import SqlToPurs.Parsing (schemaP, functionsP)
 import Test.Spec (it, describe)
 import Test.Spec.Assertions (fail, shouldEqual)
@@ -82,7 +82,6 @@ posts = SQLTable { name: "posts"
 
 f1 :: SQLFunc
 f1 = SQLFunc { name: "myfunc"
-             , toGen: SQLFuncApp
              , vars: { in: [Var "myinvar" "activities" "id"]
                      , out: FullTable "activities"}
              , set: true
@@ -91,7 +90,6 @@ f1 = SQLFunc { name: "myfunc"
 f2OutVars = [Var "id" "posts" "id", Var "activityId" "posts" "activityId", Var "datePoint" "posts" "datePoint", Var "anumber" "posts" "anumber", Var "description" "activities" "description"]
 f2 :: SQLFunc
 f2 = SQLFunc { name: "myfunc2"
-             , toGen: SQLFuncApp
              , vars: { in: [Var "my_invar" "posts" "id"]
                      , out: Separate f2OutVars}
              , set: false
@@ -104,7 +102,7 @@ parsingtest = describe "function parsing" do
            (\r -> either (\e -> fail $ "Parsing failed: " <> show e) (shouldEqual [f1, f2]) r) 
            (runStack sql functionsP)
   it "should be able to parse functions without in or out vars" do
-    let result = [SQLFunc {name: "queryAllActivities", toGen: SQLFuncApp, vars: {in: [], out: FullTable "activities"}, set: true, outers: Nothing}]
+    let result = [SQLFunc {name: "queryAllActivities", vars: {in: [], out: FullTable "activities"}, set: true, outers: Nothing}]
     let sql' = "CREATE FUNCTION queryAllActivities () RETURNS SETOF activities AS $$ select * from activities; $$ LANGUAGE SQL; "
     either (\e -> fail $ "Parsing Exception thrown: " <> e)
            (\r -> either (\e -> fail $ "Parsing failed: " <> show e) (shouldEqual result) r) 
@@ -155,8 +153,12 @@ codegentest = describe "codegen" do
       "myfunc2 :: forall eff obj. Client -> {my_invar :: PostId | obj} -> Aff (db :: DB | eff) (Maybe {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number, description :: Maybe String})"
 
   -- it "should generate a function definition" do
-    shouldEqual (genFuncDef ((unwrap f1).name) (tableToNewtypeName activities) f1InNamedFields ((unwrap f1).set)) ("myfunc cl obj = (map unwrap) <$> query (Query \"select * from myfunc($1)\" :: Query (Array ActivitiesRec)) [toSql obj.myinvar] cl")
-    shouldEqual (genFuncDef ((unwrap f2).name) "Res2" f2InNamedFields ((unwrap f2).set)) ("myfunc2 cl obj = (map unwrap) <$> queryOne (Query \"select * from myfunc2($1)\" :: Query Res2) [toSql (unwrap obj.my_invar)] cl")
+    shouldEqual 
+      (genFuncDef ((unwrap f1).name) (tableToNewtypeName activities) f1InNamedFields ((unwrap f1).set) (genQueryForFunc (unwrap f1).name f1InNamedFields)) 
+      ("myfunc cl obj = (map unwrap) <$> query (Query \"select * from myfunc($1)\" :: Query ActivitiesRec) [toSql obj.myinvar] cl")
+    shouldEqual 
+      (genFuncDef ((unwrap f2).name) "Res2" f2InNamedFields ((unwrap f2).set) (genQueryForFunc (unwrap f2).name f2InNamedFields))
+      ("myfunc2 cl obj = (map unwrap) <$> queryOne (Query \"select * from myfunc2($1)\" :: Query Res2) [toSql (unwrap obj.my_invar)] cl")
 
   -- it "should generate a newtype" do
     shouldEqual

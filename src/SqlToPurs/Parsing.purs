@@ -17,7 +17,7 @@ import Data.String (Pattern(..), contains, fromCharArray, toLower)
 import Data.Tuple (Tuple(Tuple))
 import Debug.Trace (spy)
 import Prelude (class Monad, Unit, bind, const, not, pure, unit, ($), (&&), (/=), (<#>), (<$>), (<<<), (==), (>), (>>=))
-import SqlToPurs.Model (OutParams(FullTable, Separate), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), ToGen(..), Type(..), TypeAnn(NewType, Data, NoAnn), Var(Var))
+import SqlToPurs.Model (OutParams(FullTable, Separate), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), Type(..), TypeAnn(NewType, Data, NoAnn), Var(Var))
 import Text.Parsing.Parser (ParserT, fail)
 import Text.Parsing.Parser.Combinators (between, choice, manyTill, option, optionMaybe, optional, sepBy, sepBy1, try, (<?>))
 import Text.Parsing.Parser.String (anyChar, char, oneOf, string, whiteSpace)
@@ -102,7 +102,7 @@ functionP = do
   out <- if isNothing returnsFullTable && length outvars == 0 
             then lift $ throwError "Function is not returning anything, not supported. If deleting, just pure the id"
             else pure $ maybe (Separate outvars) FullTable returnsFullTable 
-  pure $ SQLFunc {name, toGen: SQLFuncApp, vars: {in: invars, out}, set, outers}
+  pure $ SQLFunc {name, vars: {in: invars, out}, set, outers}
     where 
       isIn :: Tuple Dir Var -> Boolean
       isIn (Tuple In v) = true
