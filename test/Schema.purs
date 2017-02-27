@@ -29,7 +29,7 @@ deleteFromTesttable :: forall eff obj. Client -> {id :: UUID | obj} -> Aff (db :
 deleteFromTesttable cl obj = (map unwrap) <$> queryOne (Query "delete from testtable where id = $1 RETURNING *" :: Query TesttableRec) [toSql obj.id] cl
 
 upsertTesttable :: forall eff obj. Client -> {id :: UUID, d :: Date, twotz :: DateTime, t :: Time, mt :: Maybe Time, myadt :: Maybe MyADT | obj} -> Aff (db :: DB | eff) (Maybe {id :: UUID, d :: Date, twotz :: DateTime, t :: Time, mt :: Maybe Time, myadt :: Maybe MyADT})
-upsertTesttable cl obj = (map unwrap) <$> queryOne (Query "insert into testtable values ($1,$2,$3,$4,$5,$6) ON CONFLICT DO UPDATE" :: Query TesttableRec) [toSql obj.id, toSql obj.d, toSql obj.twotz, toSql obj.t, toSql obj.mt, toSql obj.myadt] cl
+upsertTesttable cl obj = (map unwrap) <$> queryOne (Query "insert into testtable values ($1,$2,$3,$4,$5,$6) ON CONFLICT DO UPDATE RETURNING *" :: Query TesttableRec) [toSql obj.id, toSql obj.d, toSql obj.twotz, toSql obj.t, toSql obj.mt, toSql obj.myadt] cl
 
 -- PGSQL Function definitions
 querytest :: forall eff . Client -> Aff (db :: DB | eff) (Maybe {id :: UUID, d :: Date, twotz :: DateTime, t :: Time, mt :: Maybe Time, myadt :: Maybe MyADT})

@@ -158,7 +158,7 @@ codegentest = describe "codegen" do
       ("myfunc cl obj = (map unwrap) <$> query (Query \"select * from myfunc($1)\" :: Query ActivitiesRec) [toSql obj.myinvar] cl")
     shouldEqual 
       (genFuncDef ((unwrap f2).name) "Res2" f2InNamedFields ((unwrap f2).set) (genQueryForFunc (unwrap f2).name f2InNamedFields))
-      ("myfunc2 cl obj = (map unwrap) <$> queryOne (Query \"select * from myfunc2($1)\" :: Query Res2) [toSql (unwrap obj.my_invar)] cl")
+      ("myfunc2 cl obj = (map unwrap) <$> queryOne (Query \"select * from myfunc2($1)\" :: Query Res2) [toSql obj.my_invar] cl")
 
   -- it "should generate a newtype" do
     shouldEqual
@@ -176,7 +176,7 @@ codegentest = describe "codegen" do
   -- it "should generate a foreign instance, lowercasing the property names" do
     shouldEqual
       (genForeign f2OutNamedFields "Res2")
-      "instance isSqlValueRes2 :: IsSqlValue Res2 where \n toSql a = toSql \"\"\n fromSql obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _, description: _} <$> (PostId <$> (readSqlProp \"id\" obj :: F UUID)) <*> (readSqlProp \"activityid\" obj :: F UUID) <*> (readSqlProp \"datepoint\" obj :: F (Maybe Date)) <*> (readSqlProp \"anumber\" obj :: F Number) <*> (readSqlProp \"description\" obj :: F (Maybe String)))"
+      "instance isSqlValueRes2 :: IsSqlValue Res2 where \n toSql a = toSql \"\"\n fromSql obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _, description: _} <$> (readSqlProp \"id\" obj :: F PostId) <*> (readSqlProp \"activityid\" obj :: F UUID) <*> (readSqlProp \"datepoint\" obj :: F (Maybe Date)) <*> (readSqlProp \"anumber\" obj :: F Number) <*> (readSqlProp \"description\" obj :: F (Maybe String)))"
 
 getOutVars :: SQLFunc -> OutParams
 getOutVars (SQLFunc {vars: {out}}) = out

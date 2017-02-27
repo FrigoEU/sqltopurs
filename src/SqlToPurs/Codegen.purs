@@ -206,19 +206,11 @@ genForeign fields nm =
 
 genReadProp :: MatchedOutField -> String
 genReadProp m@(MatchedOutField _ (SQLField {primarykey, notnull, type: t, newtype: nt}) (OuterJoined oj))=
-  let name = getOutFieldName m
-      noNewtypeNoNullable = "readSqlProp \"" <> toLower name <> "\" obj"
-      noNewtypeNoNullableWithType tp =  noNewtypeNoNullable <> " :: F " <> tp
-      noNewtypeWithNullableWithType tp = noNewtypeNoNullable <> " :: F (Maybe "<> tp <> ")"
-      withNewTypeNoNullableWithType = \nts -> nts <> " <$> (" <> noNewtypeNoNullable <> " :: F " <> typeToPurs t <> ")"
-      withNewTypeWithNullableWithType = \nts -> "(map " <> nts <> ") <$> (" <> noNewtypeNoNullable <> " :: F (Maybe "<> typeToPurs t <>")" <>  ")" -- To test!
-      nullable = not (primarykey || notnull) || oj
-   in "(" <> 
-      (case nt of 
-            NoAnn -> if nullable then noNewtypeWithNullableWithType (annotationToPurs t NoAnn) else noNewtypeNoNullableWithType (annotationToPurs t NoAnn)
-            Data d -> if nullable then noNewtypeWithNullableWithType (annotationToPurs t (Data d)) else noNewtypeNoNullableWithType (annotationToPurs t (Data d))
-            NewType nts -> if nullable then withNewTypeWithNullableWithType nts else withNewTypeNoNullableWithType nts
-        ) <> ")"
+  parens (readStatement <> " :: F " <> expectedTypeAnnotation)
+  where
+    nullable = not (primarykey || notnull) || oj
+    readStatement = "readSqlProp " <> quotes (toLower (getOutFieldName m)) <> " obj"
+    expectedTypeAnnotation = if nullable then parens ("Maybe " <> (annotationToPurs t nt)) else annotationToPurs t nt
 
 matchOutVars :: Array SQLTable -> Array Var -> Maybe (List String) -> Exc (Array MatchedOutField)
 matchOutVars ts vars outers = flip traverse vars go
@@ -264,25 +256,22 @@ instance matchedFieldIn :: MatchedField MatchedInField where
 
 instance matchedFieldOut :: MatchedField MatchedOutField where
   toPurs m@(MatchedOutField v (SQLField {name: n, type: t, primarykey, notnull, newtype: nt}) (OuterJoined oj)) =
-    name <> " :: " <> (if primarykey || notnull && (not oj) then "" else "Maybe ") <> annotationToPurs t nt
+    name <> " :: " <> (if primarykey || notnull && (not oj) then annotationToPurs t nt else "Maybe " <> (annotationToPurs t nt))
     where
       name = getOutFieldName m
 
 annotationToPurs :: Type -> TypeAnn -> String
-annotationToPurs t NoAnn = typeToPurs t
+annotationToPurs (PGArray t) nt = parens ("Array " <> (annotationToPurs t nt))
 annotationToPurs t (NewType nt) = nt
 annotationToPurs t (Data d) = d
-
-typeToPurs :: Type -> String
-typeToPurs Int = "Int"
-typeToPurs Boolean = "Boolean"
-typeToPurs Numeric = "Number"
-typeToPurs Text = "String"
-typeToPurs UUID = "UUID"
-typeToPurs Date = "Date"
-typeToPurs TimestampWithoutTimeZone = "DateTime"
-typeToPurs Time = "Time"
-typeToPurs (PGArray t) = "Array (" <> typeToPurs t <> ")"
+annotationToPurs Int _ = "Int"
+annotationToPurs Boolean _ = "Boolean"
+annotationToPurs Numeric _ = "Number"
+annotationToPurs Text _ = "String"
+annotationToPurs UUID _ = "UUID"
+annotationToPurs Date _ = "Date"
+annotationToPurs TimestampWithoutTimeZone _ = "DateTime"
+annotationToPurs Time _ = "Time"
 
 genFuncDef :: String -> String -> Array MatchedInField -> Boolean -> String -> String
 genFuncDef name outRecName invars set query =
@@ -297,9 +286,7 @@ squareBrackets s = "[" <> s <> "]"
 quotes s = "\"" <> s <> "\""
 
 writeInVar :: MatchedInField -> String
-writeInVar m@(MatchedInField v (SQLField {newtype: NoAnn})) = "obj." <> getVarName v
-writeInVar m@(MatchedInField v (SQLField {newtype: (NewType _)})) = "(unwrap obj." <> getVarName v <> ")"
-writeInVar m@(MatchedInField v (SQLField {newtype: (Data _)})) = "obj." <> getVarName v
+writeInVar (MatchedInField v _) = "obj." <> getVarName v
 
 -- genQueryType outRecName = if set then "Query (Array " <> outRecName <> ")" else "Query " <> outRecName
 
