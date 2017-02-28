@@ -16,7 +16,7 @@ import Data.Monoid (mempty)
 import Data.String (Pattern(..), contains, fromCharArray, toLower)
 import Data.Tuple (Tuple(Tuple))
 import Debug.Trace (spy)
-import Prelude (class Monad, Unit, bind, const, not, pure, unit, ($), (&&), (/=), (<#>), (<$>), (<<<), (==), (>), (>>=))
+import Prelude (class Monad, Unit, bind, const, not, pure, unit, ($), (&&), (/=), (<#>), (<$>), (<<<), (==), (>), (>>=), (<>))
 import SqlToPurs.Model (OutParams(FullTable, Separate), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), Type(..), TypeAnn(NewType, Data, NoAnn), Var(Var))
 import Text.Parsing.Parser (ParserT, fail)
 import Text.Parsing.Parser.Combinators (between, choice, manyTill, option, optionMaybe, optional, sepBy, sepBy1, try, (<?>))
@@ -100,7 +100,7 @@ functionP = do
   if (isJust returnsFullTable && length outvars > 0) then fail "Can't have both pure table and out vars"
                                                      else pure unit
   out <- if isNothing returnsFullTable && length outvars == 0 
-            then lift $ throwError "Function is not returning anything, not supported. If deleting, just pure the id"
+            then lift $ throwError $ "Function " <> name <> " is not returning anything, not supported. If deleting, just pure the id"
             else pure $ maybe (Separate outvars) FullTable returnsFullTable 
   pure $ SQLFunc {name, vars: {in: invars, out}, set, outers}
     where 
