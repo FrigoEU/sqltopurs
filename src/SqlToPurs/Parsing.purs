@@ -190,7 +190,7 @@ annotationP = (string "/* newtype " *> (manyTill charsForAnnotation (string " */
               <|> (string "/* data " *> (manyTill charsForAnnotation (string " */") <#> (catChars >>> NewType)))
               <|> pure NoAnn
 
-charsForAnnotation =  (alphaNum <|> char '_' <|> char '(' <|> char ')')
+charsForAnnotation = alphaNum <|> char '_' <|> char '(' <|> char ')' <|> char ' '
 
 foreignKey :: forall m. (Monad m) => ParserT String m Unit
 foreignKey = do
