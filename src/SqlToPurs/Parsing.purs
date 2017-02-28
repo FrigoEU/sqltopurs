@@ -9,14 +9,14 @@ import Control.Monad.Except (class MonadError)
 import Control.Monad.Trans.Class (lift)
 import Data.Array (catMaybes, filter, length, many, snoc, some)
 import Data.Either (Either(..))
-import Data.Foldable (foldMap, foldl)
+import Data.Foldable (fold, foldMap, foldl)
 import Data.List (List, toUnfoldable)
 import Data.Maybe (Maybe(..), isJust, isNothing, maybe)
 import Data.Monoid (mempty)
-import Data.String (Pattern(..), contains, fromCharArray, toLower)
+import Data.String (Pattern(..), contains, fromCharArray, singleton, toLower)
 import Data.Tuple (Tuple(Tuple))
 import Debug.Trace (spy)
-import Prelude (class Monad, Unit, bind, const, not, pure, unit, ($), (&&), (/=), (<#>), (<$>), (<<<), (==), (>), (>>=), (<>))
+import Prelude (class Monad, Unit, bind, const, map, not, pure, unit, ($), (&&), (/=), (<#>), (<$>), (<<<), (<>), (==), (>), (>>=), (>>>))
 import SqlToPurs.Model (OutParams(FullTable, Separate), SQLField(SQLField), SQLFunc(SQLFunc), SQLTable(SQLTable), Type(..), TypeAnn(NewType, Data, NoAnn), Var(Var))
 import Text.Parsing.Parser (ParserT, fail)
 import Text.Parsing.Parser.Combinators (between, choice, manyTill, option, optionMaybe, optional, sepBy, sepBy1, try, (<?>))
@@ -182,11 +182,15 @@ fieldP table = do
   let primarykey = contains (Pattern "primary key") qualifiers
   let notnull = contains (Pattern "not null") qualifiers
   optional whiteSpace
-  nt <- (string "/* newtype " *> word >>= (\w -> string " */" *> pure (NewType w)))
-        <|> (string "/* data " *> word >>= (\w -> string " */" *> pure (Data w)))
-        <|> pure NoAnn
+  nt <- annotationP
   optional whiteSpace
   pure $ SQLField {name, table, "type": t, primarykey, notnull, newtype: nt}
+
+annotationP = (string "/* newtype " *> (manyTill charsForAnnotation (string " */") <#> (catChars >>> NewType)))
+              <|> (string "/* data " *> (manyTill charsForAnnotation (string " */") <#> (catChars >>> NewType)))
+              <|> pure NoAnn
+
+charsForAnnotation =  (alphaNum <|> char '_' <|> char '(' <|> char ')')
 
 foreignKey :: forall m. (Monad m) => ParserT String m Unit
 foreignKey = do
@@ -200,3 +204,6 @@ foreignKey = do
   bla <- char '(' *> manyTill (letter <|> space <|> char ',') (char ')')
   optional whiteSpace
   pure unit
+
+catChars :: List Char -> String
+catChars = fold <<< map singleton
