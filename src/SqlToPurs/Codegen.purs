@@ -3,7 +3,7 @@ module SqlToPurs.Codegen where
 import Control.Monad.Eff (runPure, Eff)
 import Control.Monad.Eff.Exception (EXCEPTION, throw, message, catchException)
 import Data.Array (length, mapWithIndex, nubBy, range, zip, (..))
-import Data.Either (Either(Left, Right))
+import Data.Either (Either(Left, Right), either)
 import Data.Foldable (find, foldMap)
 import Data.List (List, elemIndex)
 import Data.Maybe (Maybe(Nothing, Just), isJust, maybe)
@@ -14,6 +14,10 @@ import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
 import Prelude (Unit, append, bind, flip, id, map, not, pure, show, unit, (#), ($), (&&), (-), (/=), (<#>), (<$>), (<>), (==), (>), (>>>), (||))
 import SqlToPurs.Model (OutParams(FullTable, Separate), OuterJoined(OuterJoined), SQLField(..), SQLFunc(SQLFunc), SQLTable(..), Type(PGArray, Time, TimestampWithoutTimeZone, Date, UUID, Text, Numeric, Boolean, Int), TypeAnn(Data, NewType, NoAnn), Var(Var))
+
+-- Model
+-- MatchInField = Input parameter of function, that is matched with a field in a table
+-- MatchOutField = Output parameter of function, that is matched with a field in a table
 
 type Exc a = Eff (err :: EXCEPTION) a
 
@@ -59,13 +63,13 @@ full ts fs = do
     ]
 
 genTypeDeclForGetAll :: SQLTable -> String
-genTypeDeclForGetAll t = genTypeDecl [] (tableToOutMatchedFields t) true ("getAll" <> capitalize (unwrap t).name)
+genTypeDeclForGetAll t = genTypeDecl [] (Right t) true ("getAll" <> capitalize (unwrap t).name)
 
 genFuncDefForGetAll :: SQLTable -> String
 genFuncDefForGetAll t =
   genFuncDef
     ("getAll" <> capitalize (unwrap t).name)
-    (tableToNewtypeName t)
+    (Right t)
     []
     true
     (genQueryForGetAll t)
@@ -74,7 +78,7 @@ genTypeDeclForGetOne :: MatchedInField -> SQLTable -> String
 genTypeDeclForGetOne id t =
   genTypeDecl
     [id]
-    (tableToOutMatchedFields t)
+    (Right t)
     false
     ("getOneFrom" <> capitalize (unwrap t).name)
 
@@ -82,7 +86,7 @@ genFuncDefForGetOne :: MatchedInField -> SQLTable -> String
 genFuncDefForGetOne id t =
   genFuncDef
     ("getOneFrom" <> capitalize (unwrap t).name)
-    (tableToNewtypeName t)
+    (Right t)
     [id]
     false
     (genQueryForGetOne id t)
@@ -91,7 +95,7 @@ genTypeDeclForDelete :: MatchedInField -> SQLTable -> String
 genTypeDeclForDelete id t =
   genTypeDecl
     [id]
-    (tableToOutMatchedFields t)
+    (Right t)
     false
     ("deleteFrom" <> capitalize (unwrap t).name)
 
@@ -99,7 +103,7 @@ genFuncDefForDelete :: MatchedInField -> SQLTable -> String
 genFuncDefForDelete id t =
   genFuncDef
     ("deleteFrom" <> capitalize (unwrap t).name)
-    (tableToNewtypeName t)
+    (Right t)
     [id]
     false
     (genQueryForDelete id t)
@@ -108,7 +112,7 @@ genTypeDeclForUpsert :: SQLTable -> String
 genTypeDeclForUpsert t =
   genTypeDecl
     (tableToInMatchedFields t)
-    (tableToOutMatchedFields t)
+    (Right t)
     false
     ("upsert" <> capitalize (unwrap t).name)
 
@@ -116,7 +120,7 @@ genFuncDefForUpsert :: SQLTable -> String
 genFuncDefForUpsert t =
   genFuncDef
     ("upsert" <> capitalize (unwrap t).name)
-    (tableToNewtypeName t)
+    (Right t)
     (tableToInMatchedFields t)
     false
     (genQueryForUpsert t)
@@ -130,16 +134,16 @@ genFullFunc ts i s@(SQLFunc {name, vars: {in: invars, out: outvars@(Separate sep
   let nt = genNewType namedFieldsOut' recname
   let nti = genNewtypeInstance recname
   let forn = genForeign namedFieldsOut' recname
-  let typedecl = genTypeDecl namedFieldsIn' namedFieldsOut' set name
-  let funcdef = genFuncDef name recname namedFieldsIn' set (genQueryForFunc name namedFieldsIn')
+  let typedecl = genTypeDecl namedFieldsIn' (Left namedFieldsOut') set name
+  let funcdef = genFuncDef name (Left recname) namedFieldsIn' set (genQueryForFunc name namedFieldsIn')
   pure $ typedecl <> "\n" <> funcdef <> "\n" <> nt <> "\n" <> nti <> "\n" <> forn <> "\n\n"
 genFullFunc ts _ s@(SQLFunc {name, vars: {in: invars, out: outvars@(FullTable tableN)}, set, outers}) = do
   t <- maybe (throw $ "couldn't find table " <> tableN) pure (findTable ts tableN)
   let recname = tableToNewtypeName t
   let namedFieldsOut' = tableToOutMatchedFields t
   namedFieldsIn' <- matchInVars ts invars
-  let typedecl = genTypeDecl namedFieldsIn' namedFieldsOut' set name
-  let funcdef = genFuncDef name recname namedFieldsIn' set (genQueryForFunc name namedFieldsIn')
+  let typedecl = genTypeDecl namedFieldsIn' (Left namedFieldsOut') set name
+  let funcdef = genFuncDef name (Left recname) namedFieldsIn' set (genQueryForFunc name namedFieldsIn')
   pure $ typedecl <> "\n" <> funcdef <> "\n\n"
 
 genNewtypeForTable :: SQLTable -> String
@@ -176,9 +180,9 @@ checkDuplicateVars vs =
    in if totalLength /= nubbedLength then (throw "Duplicate fields, not supported")
                                      else pure unit
 
-genTypeDecl :: Array MatchedInField -> Array MatchedOutField -> Boolean -> String -> String
-genTypeDecl infields outfields set name =
-  let outrec = toRecord Nothing outfields
+genTypeDecl :: Array MatchedInField -> Either (Array MatchedOutField) SQLTable -> Boolean -> String -> String
+genTypeDecl infields out set name =
+  let outrec = either (toRecord Nothing) (tableToNewtypeName) out
       inrec = toRecord (Just "obj") infields
    in name
          <> " :: forall eff " <> (if length infields > 0 then "obj" else "") <>". Client -> "
@@ -273,11 +277,11 @@ annotationToPurs Date _ = "Date"
 annotationToPurs TimestampWithoutTimeZone _ = "DateTime"
 annotationToPurs Time _ = "Time"
 
-genFuncDef :: String -> String -> Array MatchedInField -> Boolean -> String -> String
-genFuncDef name outRecName invars set query =
-    name <> " cl " <> (if (length invars > 0) then "obj" else "") <> " = (map unwrap) <$> "
+genFuncDef :: String -> (Either String SQLTable) -> Array MatchedInField -> Boolean -> String -> String
+genFuncDef name out invars set query =
+    name <> " cl " <> (if (length invars > 0) then "obj" else "") <> " = " <> either (\_ -> "(map unwrap) <$> ") (\_ -> "") out
     <> (if set then "query " else "queryOne ")
-    <> parens ("Query " <> quotes query <> " :: Query " <> outRecName) <> " "
+    <> parens ("Query " <> quotes query <> " :: Query " <> (either id tableToNewtypeName out)) <> " "
     <> squareBrackets (invars <#> (writeInVar >>> append "toSql ") # joinWith ", ")
     <> " cl"
 

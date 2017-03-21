@@ -5,7 +5,7 @@ import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (throw)
 import Data.Bounded (top, bottom)
 import Data.DateTime (DateTime(DateTime))
-import Data.Either (Either(Right), either)
+import Data.Either (Either(..), either)
 import Data.Foldable (foldl)
 import Data.List (List(..), delete)
 import Data.Maybe (Maybe(..), maybe)
@@ -146,18 +146,18 @@ codegentest = describe "codegen" do
 
   -- it "should generate a type declaration for SQLFunc ADT" do
     shouldEqual
-      (genTypeDecl f1InNamedFields f1OutNamedFields (unwrap f1).set (unwrap f1).name)
-      "myfunc :: forall eff obj. Client -> {myinvar :: UUID | obj} -> Aff (db :: DB | eff) (Array {id :: UUID, description :: String})"
+      (genTypeDecl f1InNamedFields (Right activities) (unwrap f1).set (unwrap f1).name)
+      "myfunc :: forall eff obj. Client -> {myinvar :: UUID | obj} -> Aff (db :: DB | eff) (Array ActivitiesRec)"
     shouldEqual
-      (genTypeDecl f2InNamedFields f2OutNamedFields (unwrap f2).set (unwrap f2).name)
+      (genTypeDecl f2InNamedFields (Left f2OutNamedFields) (unwrap f2).set (unwrap f2).name)
       "myfunc2 :: forall eff obj. Client -> {my_invar :: PostId | obj} -> Aff (db :: DB | eff) (Maybe {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number, description :: Maybe String})"
 
   -- it "should generate a function definition" do
     shouldEqual 
-      (genFuncDef ((unwrap f1).name) (tableToNewtypeName activities) f1InNamedFields ((unwrap f1).set) (genQueryForFunc (unwrap f1).name f1InNamedFields)) 
-      ("myfunc cl obj = (map unwrap) <$> query (Query \"select * from myfunc($1)\" :: Query ActivitiesRec) [toSql obj.myinvar] cl")
+      (genFuncDef ((unwrap f1).name) (Right activities) f1InNamedFields ((unwrap f1).set) (genQueryForFunc (unwrap f1).name f1InNamedFields)) 
+      ("myfunc cl obj = query (Query \"select * from myfunc($1)\" :: Query ActivitiesRec) [toSql obj.myinvar] cl")
     shouldEqual 
-      (genFuncDef ((unwrap f2).name) "Res2" f2InNamedFields ((unwrap f2).set) (genQueryForFunc (unwrap f2).name f2InNamedFields))
+      (genFuncDef ((unwrap f2).name) (Left "Res2") f2InNamedFields ((unwrap f2).set) (genQueryForFunc (unwrap f2).name f2InNamedFields))
       ("myfunc2 cl obj = (map unwrap) <$> queryOne (Query \"select * from myfunc2($1)\" :: Query Res2) [toSql obj.my_invar] cl")
 
   -- it "should generate a newtype" do
