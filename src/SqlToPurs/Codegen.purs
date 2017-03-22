@@ -307,7 +307,14 @@ genQueryForDelete :: MatchedInField -> SQLTable -> String
 genQueryForDelete (MatchedInField v _) t = "delete from " <> (unwrap t).name <> " where " <> getVarName v <> " = $1 RETURNING *"
 
 genQueryForUpsert :: SQLTable -> String
-genQueryForUpsert t = "insert into " <> (unwrap t).name <> " values " <> parens (toQuestionmarks (tableToInMatchedFields t)) <> " ON CONFLICT DO UPDATE RETURNING *"
+genQueryForUpsert t =
+  "insert into " <> (unwrap t).name <>
+  " values " <> parens (toQuestionmarks (tableToInMatchedFields t))
+  <> " (ON CONFLICT DO UPDATE SET " <> joinWith ", " fields
+  <> ") RETURNING *"
+  where
+    toSetStatement i (SQLField sf) = sf.name <> " = $" <> show i
+    fields = mapWithIndex toSetStatement (unwrap t).fields
 
 getVarName :: Var -> String
 getVarName (Var n _ _) = n
