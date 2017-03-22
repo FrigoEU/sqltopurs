@@ -12,7 +12,7 @@ import Data.Newtype (unwrap)
 import Data.String (drop, joinWith, take, toLower, toUpper)
 import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
-import Prelude (Unit, append, bind, flip, id, map, not, pure, show, unit, (#), ($), (&&), (-), (/=), (<#>), (<$>), (<>), (==), (>), (>>>), (||))
+import Prelude (Unit, append, bind, flip, id, map, not, pure, show, unit, (#), ($), (&&), (+), (-), (/=), (<#>), (<$>), (<>), (==), (>), (>>>), (||))
 import SqlToPurs.Model (OutParams(FullTable, Separate), OuterJoined(OuterJoined), SQLField(..), SQLFunc(SQLFunc), SQLTable(..), Type(PGArray, Time, TimestampWithoutTimeZone, Date, UUID, Text, Numeric, Boolean, Int), TypeAnn(Data, NewType, NoAnn), Var(Var))
 
 -- Model
@@ -306,14 +306,15 @@ genQueryForGetOne (MatchedInField v _) t = "select * from " <> (unwrap t).name <
 genQueryForDelete :: MatchedInField -> SQLTable -> String
 genQueryForDelete (MatchedInField v _) t = "delete from " <> (unwrap t).name <> " where " <> getVarName v <> " = $1 RETURNING *"
 
+-- TODO, hardcoded "id"
 genQueryForUpsert :: SQLTable -> String
 genQueryForUpsert t =
   "insert into " <> (unwrap t).name <>
   " values " <> parens (toQuestionmarks (tableToInMatchedFields t))
-  <> " (ON CONFLICT DO UPDATE SET " <> joinWith ", " fields
-  <> ") RETURNING *"
+  <> " ON CONFLICT (id) DO UPDATE SET " <> joinWith ", " fields 
+  <> " RETURNING *"
   where
-    toSetStatement i (SQLField sf) = sf.name <> " = $" <> show i
+    toSetStatement i (SQLField sf) = sf.name <> " = $" <> show (i + 1)
     fields = mapWithIndex toSetStatement (unwrap t).fields
 
 getVarName :: Var -> String
