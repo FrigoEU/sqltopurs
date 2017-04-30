@@ -13,7 +13,7 @@ import Data.Newtype (unwrap)
 import Data.String (joinWith)
 import Database.Postgres (withClient, ConnectionInfo)
 import Main (runStack)
-import MyApp.SQL (querytest, inserttest)
+import MyApp.SQL (TesttableRec(..), inserttest, querytest)
 import Prelude (bind, pure, show, unit, ($), (*>), (<>), (>>>), discard)
 import SqlToPurs.Codegen (genForeign, genFuncDef, genNewType, genNewtypeInstance, genQueryForFunc, genTypeDecl, matchInVars, matchOutVars, tableToNewtypeName, tableToOutMatchedFields, toEither)
 import SqlToPurs.Model (OutParams(Separate, FullTable), SQLField(SQLField), SQLFunc(..), SQLTable(SQLTable), Type(Numeric, Date, Text, UUID), TypeAnn(NoAnn, NewType), Var(Var))
@@ -196,7 +196,7 @@ sqltest = describe "insert and retrieve row" do
       res <- querytest c 
       maybe 
         (fail "No record found")
-        (\{d: d1, t: t1, twotz: twotz1, myadt: myadt1, mt: mt1} -> do
+        (\(TesttableRec {d: d1, t: t1, twotz: twotz1, myadt: myadt1, mt: mt1}) -> do
           d `shouldEqual` d1
           t `shouldEqual` t1
           twotz `shouldEqual` twotz1

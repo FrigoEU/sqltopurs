@@ -32,15 +32,15 @@ upsertTesttable :: forall eff obj. Client -> {id :: UUID, d :: Date, twotz :: Da
 upsertTesttable cl obj = queryOne (Query "insert into testtable (id, d, twotz, t, mt, myadt) values ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id, d = EXCLUDED.d, twotz = EXCLUDED.twotz, t = EXCLUDED.t, mt = EXCLUDED.mt, myadt = EXCLUDED.myadt RETURNING *" :: Query TesttableRec) [toSql obj.id, toSql obj.d, toSql obj.twotz, toSql obj.t, toSql obj.mt, toSql obj.myadt] cl
 
 -- PGSQL Function definitions
-querytest :: forall eff . Client -> Aff (db :: DB | eff) (Maybe {id :: UUID, d :: Date, twotz :: DateTime, t :: Time, mt :: Maybe Time, myadt :: Maybe MyADT})
-querytest cl  = (map unwrap) <$> queryOne (Query "select * from querytest()" :: Query TesttableRec) [] cl
+querytest :: forall eff . Client -> Aff (db :: DB | eff) (Maybe TesttableRec)
+querytest cl  = queryOne (Query "select * from querytest()" :: Query TesttableRec) [] cl
 
 
-inserttest :: forall eff obj. Client -> {d :: Date, twotz :: DateTime, t :: Time, myadt :: Maybe MyADT, mt :: Maybe Time | obj} -> Aff (db :: DB | eff) (Maybe {id :: UUID})
-inserttest cl obj = (map unwrap) <$> queryOne (Query "select * from inserttest($1,$2,$3,$4,$5)" :: Query Res1) [toSql obj.d, toSql obj.twotz, toSql obj.t, toSql obj.myadt, toSql obj.mt] cl
-newtype Res1 = Res1 {id :: UUID}
-derive instance newtypeRes1 :: Newtype Res1 _ 
-instance isSqlValueRes1 :: IsSqlValue Res1 where 
+inserttest :: forall eff obj. Client -> {d :: Date, twotz :: DateTime, t :: Time, myadt :: Maybe MyADT, mt :: Maybe Time | obj} -> Aff (db :: DB | eff) (Maybe InserttestRec)
+inserttest cl obj = queryOne (Query "select * from inserttest($1,$2,$3,$4,$5)" :: Query InserttestRec) [toSql obj.d, toSql obj.twotz, toSql obj.t, toSql obj.myadt, toSql obj.mt] cl
+newtype InserttestRec = InserttestRec {id :: UUID}
+derive instance newtypeInserttestRec :: Newtype InserttestRec _ 
+instance isSqlValueInserttestRec :: IsSqlValue InserttestRec where 
  toSql a = toSql ""
- fromSql obj = Res1 <$> ({id: _} <$> (readSqlProp "id" obj :: F UUID))
+ fromSql obj = InserttestRec <$> ({id: _} <$> (readSqlProp "id" obj :: F UUID))
 
