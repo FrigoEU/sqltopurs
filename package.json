@@ -1,6 +1,6 @@
 {
   "name": "sqltopurs",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "author": "Simon Van Casteren",
   "bin": {
     "sqltopurs": "index.js"
@@ -18,9 +18,7 @@
     "pg": "6.0.1"
   },
   "scripts": {
-    "build": "pulp build && npm run compile",
-    "compile": "pulp build --main Main --module Main --to sqltopurs.js",
-    "compiletest": "pulp build --main Test.Main --module Test.Main --to runtest.js && java -jar closure-compiler-v20161024.jar --js runtest.js --js_output_file runtestcomp.js -O SIMPLE",
+    "build": "pulp build --main Main --to sqltopurs.js",
     "test": "npm run build && npm run setuptestsql && pulp test",
     "prepublish": "npm run build && npm run test",
 
