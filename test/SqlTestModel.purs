@@ -1,12 +1,12 @@
 module Test.SqlTestModel where
 
 import Control.Monad.Except (Except, throwError)
-import Data.Argonaut.Core (Json)
-import Data.Argonaut.Decode (gDecodeJson, decodeJson, class DecodeJson)
-import Data.Argonaut.Encode (gEncodeJson, encodeJson, class EncodeJson)
+import Data.Argonaut.Core (Json, stringify)
+import Data.Argonaut.Decode (decodeJson, class DecodeJson)
+import Data.Argonaut.Decode.Generic (gDecodeJson)
+import Data.Argonaut.Encode (encodeJson, class EncodeJson)
+import Data.Argonaut.Encode.Generic (gEncodeJson)
 import Data.Argonaut.Parser (jsonParser)
-import Data.Argonaut.Printer (printJson)
-
 import Data.Either (either)
 import Data.Foreign (Foreign, ForeignError(JSONError, TypeMismatch))
 import Data.Generic (class Generic, gShow, gEq)
@@ -33,7 +33,7 @@ instance isSqlValueMyADT :: IsSqlValue MyADT where
   fromSql = fromSqlJson
 
 toSqlJson :: forall a. (EncodeJson a) => a -> SqlValue
-toSqlJson = encodeJson >>> (printJson :: Json -> String) >>> toSql
+toSqlJson = encodeJson >>> (stringify :: Json -> String) >>> toSql
 fromSqlJson :: forall t67. (DecodeJson t67) => Foreign -> Except (NonEmptyList ForeignError) t67
 fromSqlJson = fromSql >=> jsonParserTr >=> decodeJsonTr
   where 

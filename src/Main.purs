@@ -29,13 +29,13 @@ setup :: YargsSetup
 setup = usage "$0 -i Inputfile(s) -o Outputfile" 
         <> example "$0 -i my.sql -o my.purs -m Sweetapp.SQL" "Turn SQL functions into PureScript functions"
 
-main :: forall t124. Eff ( err :: EXCEPTION , console :: CONSOLE , fs :: FS | t124 ) Unit
+main :: forall t124. Eff ( exception :: EXCEPTION , console :: CONSOLE , fs :: FS | t124 ) Unit
 main = runY setup $ go <$> yarg "i" ["in"]  (Just "Input File(s)") (Right "Needs at least one input file") true
                        <*> yarg "o" ["out"] (Just "Output File") (Right "Needs an output file") true
                        <*> yarg "m" ["module"] (Just "Module name") (Right "Needs a module name") true
                        <*> yarg "e" ["extra"] (Just "Extra File to be inlined") (Left "") true
 
-go :: forall eff. String -> String -> String -> String -> Eff (fs :: FS, console :: CONSOLE, err :: EXCEPTION | eff) Unit
+go :: forall eff. String -> String -> String -> String -> Eff (fs :: FS, console :: CONSOLE, exception :: EXCEPTION | eff) Unit
 go i o m e = runAff (throwException <<< error <<< show) (const $ log "Done") (do
   let infiles = split (Pattern " ") i
   sql <- traverse (readTextFile UTF8) infiles <#> joinWith "\n"

@@ -12,14 +12,14 @@ import Data.Newtype (unwrap)
 import Data.String (drop, joinWith, take, toLower, toUpper)
 import Data.Traversable (traverse, sequence)
 import Data.Tuple (Tuple(Tuple))
-import Prelude (Unit, append, bind, flip, id, map, not, pure, show, unit, (#), ($), (&&), (+), (-), (/=), (<#>), (<$>), (<>), (==), (>), (>>>), (||))
+import Prelude (Unit, append, bind, flip, id, map, not, pure, show, unit, (#), ($), (&&), (+), (-), (/=), (<#>), (<$>), (<>), (==), (>), (>>>), (||), discard)
 import SqlToPurs.Model (OutParams(FullTable, Separate), OuterJoined(OuterJoined), SQLField(..), SQLFunc(SQLFunc), SQLTable(..), Type(PGArray, Time, TimestampWithoutTimeZone, Date, UUID, Text, Numeric, Boolean, Int), TypeAnn(Data, NewType, NoAnn), Var(Var))
 
 -- Model
 -- MatchInField = Input parameter of function, that is matched with a field in a table
 -- MatchOutField = Output parameter of function, that is matched with a field in a table
 
-type Exc a = Eff (err :: EXCEPTION) a
+type Exc a = Eff (exception :: EXCEPTION) a
 
 header :: String -> String
 header m = joinWith "\n" [ "module " <> m <> " where"
@@ -50,7 +50,7 @@ full ts fs = do
                  )
            # sequence
            <#> joinWith "\n"
-  gennedFunctions <- fs `flip mapWithIndex` (genFullFunc ts)
+  gennedFunctions <- fs <#> (genFullFunc ts)
                         # sequence
                         <#> joinWith "\n"
   pure $ joinWith "\n" [
@@ -125,24 +125,27 @@ genFuncDefForUpsert t =
     false
     (genQueryForUpsert t)
 
-genFullFunc :: Array SQLTable -> Int -> SQLFunc -> Exc String
-genFullFunc ts i s@(SQLFunc {name, vars: {in: invars, out: outvars@(Separate sepout)}, set, outers})  = do
-  let recname = "Res" <> show i
+genFuncRecName :: SQLFunc -> String
+genFuncRecName (SQLFunc {name}) = (capitalize name) <> "Rec"
+
+genFullFunc :: Array SQLTable -> SQLFunc -> Exc String
+genFullFunc ts s@(SQLFunc {name, vars: {in: invars, out: outvars@(Separate sepout)}, set, outers})  = do
+  let recname = genFuncRecName s
   checkDuplicateVars sepout
   namedFieldsOut' <- matchOutVars ts sepout outers
   namedFieldsIn' <- matchInVars ts invars
   let nt = genNewType namedFieldsOut' recname
   let nti = genNewtypeInstance recname
   let forn = genForeign namedFieldsOut' recname
-  let typedecl = genTypeDecl namedFieldsIn' (Left namedFieldsOut') set name
+  let typedecl = genTypeDecl namedFieldsIn' (Left recname) set name
   let funcdef = genFuncDef name (Left recname) namedFieldsIn' set (genQueryForFunc name namedFieldsIn')
   pure $ typedecl <> "\n" <> funcdef <> "\n" <> nt <> "\n" <> nti <> "\n" <> forn <> "\n\n"
-genFullFunc ts _ s@(SQLFunc {name, vars: {in: invars, out: outvars@(FullTable tableN)}, set, outers}) = do
+genFullFunc ts s@(SQLFunc {name, vars: {in: invars, out: outvars@(FullTable tableN)}, set, outers}) = do
   t <- maybe (throw $ "couldn't find table " <> tableN) pure (findTable ts tableN)
   let recname = tableToNewtypeName t
   let namedFieldsOut' = tableToOutMatchedFields t
   namedFieldsIn' <- matchInVars ts invars
-  let typedecl = genTypeDecl namedFieldsIn' (Left namedFieldsOut') set name
+  let typedecl = genTypeDecl namedFieldsIn' (Right t) set name
   let funcdef = genFuncDef name (Left recname) namedFieldsIn' set (genQueryForFunc name namedFieldsIn')
   pure $ typedecl <> "\n" <> funcdef <> "\n\n"
 
@@ -180,9 +183,9 @@ checkDuplicateVars vs =
    in if totalLength /= nubbedLength then (throw "Duplicate fields, not supported")
                                      else pure unit
 
-genTypeDecl :: Array MatchedInField -> Either (Array MatchedOutField) SQLTable -> Boolean -> String -> String
+genTypeDecl :: Array MatchedInField -> Either String SQLTable -> Boolean -> String -> String
 genTypeDecl infields out set name =
-  let outrec = either (toRecord Nothing) (tableToNewtypeName) out
+  let outrec = either id (tableToNewtypeName) out
       inrec = toRecord (Just "obj") infields
    in name
          <> " :: forall eff " <> (if length infields > 0 then "obj" else "") <>". Client -> "
@@ -279,7 +282,7 @@ annotationToPurs Time _ = "Time"
 
 genFuncDef :: String -> (Either String SQLTable) -> Array MatchedInField -> Boolean -> String -> String
 genFuncDef name out invars set query =
-    name <> " cl " <> (if (length invars > 0) then "obj" else "") <> " = " <> either (\_ -> "(map unwrap) <$> ") (\_ -> "") out
+    name <> " cl " <> (if (length invars > 0) then "obj" else "") <> " = "
     <> (if set then "query " else "queryOne ")
     <> parens ("Query " <> quotes query <> " :: Query " <> (either id tableToNewtypeName out)) <> " "
     <> squareBrackets (invars <#> (writeInVar >>> append "toSql ") # joinWith ", ")

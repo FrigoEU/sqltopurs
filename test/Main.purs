@@ -14,7 +14,7 @@ import Data.String (joinWith)
 import Database.Postgres (withClient, ConnectionInfo)
 import Main (runStack)
 import MyApp.SQL (querytest, inserttest)
-import Prelude (bind, pure, show, unit, ($), (*>), (<>), (>>>))
+import Prelude (bind, pure, show, unit, ($), (*>), (<>), (>>>), discard)
 import SqlToPurs.Codegen (genForeign, genFuncDef, genNewType, genNewtypeInstance, genQueryForFunc, genTypeDecl, matchInVars, matchOutVars, tableToNewtypeName, tableToOutMatchedFields, toEither)
 import SqlToPurs.Model (OutParams(Separate, FullTable), SQLField(SQLField), SQLFunc(..), SQLTable(SQLTable), Type(Numeric, Date, Text, UUID), TypeAnn(NoAnn, NewType), Var(Var))
 import SqlToPurs.Parsing (schemaP, functionsP)
@@ -149,8 +149,8 @@ codegentest = describe "codegen" do
       (genTypeDecl f1InNamedFields (Right activities) (unwrap f1).set (unwrap f1).name)
       "myfunc :: forall eff obj. Client -> {myinvar :: UUID | obj} -> Aff (db :: DB | eff) (Array ActivitiesRec)"
     shouldEqual
-      (genTypeDecl f2InNamedFields (Left f2OutNamedFields) (unwrap f2).set (unwrap f2).name)
-      "myfunc2 :: forall eff obj. Client -> {my_invar :: PostId | obj} -> Aff (db :: DB | eff) (Maybe {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number, description :: Maybe String})"
+      (genTypeDecl f2InNamedFields (Left "Myfunc2Rec") (unwrap f2).set (unwrap f2).name)
+      "myfunc2 :: forall eff obj. Client -> {my_invar :: PostId | obj} -> Aff (db :: DB | eff) (Maybe Myfunc2Rec)"
 
   -- it "should generate a function definition" do
     shouldEqual 
@@ -158,31 +158,31 @@ codegentest = describe "codegen" do
       ("myfunc cl obj = query (Query \"select * from myfunc($1)\" :: Query ActivitiesRec) [toSql obj.myinvar] cl")
     shouldEqual 
       (genFuncDef ((unwrap f2).name) (Left "Res2") f2InNamedFields ((unwrap f2).set) (genQueryForFunc (unwrap f2).name f2InNamedFields))
-      ("myfunc2 cl obj = (map unwrap) <$> queryOne (Query \"select * from myfunc2($1)\" :: Query Res2) [toSql obj.my_invar] cl")
+      ("myfunc2 cl obj = queryOne (Query \"select * from myfunc2($1)\" :: Query Res2) [toSql obj.my_invar] cl")
 
   -- it "should generate a newtype" do
     shouldEqual
       (genNewType f1OutNamedFields (tableToNewtypeName activities))
       ("newtype ActivitiesRec = ActivitiesRec {id :: UUID, description :: String}")
     shouldEqual
-      (genNewType f2OutNamedFields "Res2")
-      "newtype Res2 = Res2 {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number, description :: Maybe String}"
+      (genNewType f2OutNamedFields "Myfunc2Rec")
+      "newtype Myfunc2Rec = Myfunc2Rec {id :: PostId, activityId :: UUID, datePoint :: Maybe Date, anumber :: Number, description :: Maybe String}"
 
   -- it "should generate a newtype instance" do
     shouldEqual
-      (genNewtypeInstance "Res1")
-      ("derive instance newtypeRes1 :: Newtype Res1 _ ")
+      (genNewtypeInstance "Myfunc2Rec")
+      ("derive instance newtypeMyfunc2Rec :: Newtype Myfunc2Rec _ ")
 
-  -- it "should generate a foreign instance, lowercasing the property names" do
+  -- it "should generate an IsSqlValue instance, lowercasing the property names" do
     shouldEqual
-      (genForeign f2OutNamedFields "Res2")
-      "instance isSqlValueRes2 :: IsSqlValue Res2 where \n toSql a = toSql \"\"\n fromSql obj = Res2 <$> ({id: _, activityId: _, datePoint: _, anumber: _, description: _} <$> (readSqlProp \"id\" obj :: F PostId) <*> (readSqlProp \"activityid\" obj :: F UUID) <*> (readSqlProp \"datepoint\" obj :: F (Maybe Date)) <*> (readSqlProp \"anumber\" obj :: F Number) <*> (readSqlProp \"description\" obj :: F (Maybe String)))"
+      (genForeign f2OutNamedFields "Myfunc2Rec")
+      "instance isSqlValueMyfunc2Rec :: IsSqlValue Myfunc2Rec where \n toSql a = toSql \"\"\n fromSql obj = Myfunc2Rec <$> ({id: _, activityId: _, datePoint: _, anumber: _, description: _} <$> (readSqlProp \"id\" obj :: F PostId) <*> (readSqlProp \"activityid\" obj :: F UUID) <*> (readSqlProp \"datepoint\" obj :: F (Maybe Date)) <*> (readSqlProp \"anumber\" obj :: F Number) <*> (readSqlProp \"description\" obj :: F (Maybe String)))"
 
 getOutVars :: SQLFunc -> OutParams
 getOutVars (SQLFunc {vars: {out}}) = out
 
 localConnInfo :: ConnectionInfo
-localConnInfo = {host: "localhost", db: "sqltopurstest", port: 5432, user: "", password: ""}
+localConnInfo = {host: "localhost", db: "sqltopurstest", port: 5432, user: "", password: "", ssl: false}
 
 sqltest = describe "insert and retrieve row" do
   it "should retrieve the same stuff we put in" do
@@ -192,7 +192,7 @@ sqltest = describe "insert and retrieve row" do
     let mt = Nothing
     let myadt = Just Two
     withClient localConnInfo \c -> do 
-      inserttest c {d, t, twotz, myadt, mt}
+      _ <- inserttest c {d, t, twotz, myadt, mt}
       res <- querytest c 
       maybe 
         (fail "No record found")

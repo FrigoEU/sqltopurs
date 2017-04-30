@@ -1,6 +1,6 @@
 {
   "name": "sqltopurs",
-  "version": "0.10.3",
+  "version": "0.11.0",
   "author": "Simon Van Casteren",
   "bin": {
     "sqltopurs": "index.js"
@@ -19,11 +19,8 @@
   },
   "scripts": {
     "build": "pulp build && npm run compile",
-    "devpsc": "~/purescript/.stack-work/dist/x86_64-osx/Cabal-1.22.5.0/build/psc/psc -o './output_dev' 'bower_components/purescript-*/src/**/*.purs' 'src/**/*.purs' 'test/**/*.purs'",
-    "compile": "psc-bundle output/**/{index,foreign}.js --main Main --module Main --output sqltopurs.js",
-    "compiletest": "pulp build && psc-bundle output/**/{index,foreign}.js --main Test.Main --module Test.Main --output runtest.js && java -jar closure-compiler-v20161024.jar --js runtest.js --js_output_file runtestcomp.js -O SIMPLE",
-    "bundledev": "~/purescript/.stack-work/dist/x86_64-osx/Cabal-1.22.5.0/build/psc-bundle/psc-bundle output_dev/**/{index,foreign}.js --main Test.Main --module Test.Main --output runtestdev.js",
-    "compiletestdev": "npm run devpsc && npm run bundledev && java -jar closure-compiler-v20161024.jar --process_common_js_modules --js runtestdev.js --js_output_file runtestdevcomp.js -O ADVANCED",
+    "compile": "pulp build --main Main --module Main --to sqltopurs.js",
+    "compiletest": "pulp build --main Test.Main --module Test.Main --to runtest.js && java -jar closure-compiler-v20161024.jar --js runtest.js --js_output_file runtestcomp.js -O SIMPLE",
     "test": "npm run build && npm run setuptestsql && pulp test",
     "prepublish": "npm run build && npm run test",
 
