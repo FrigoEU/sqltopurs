@@ -24,10 +24,11 @@ type Exc a = Eff (exception :: EXCEPTION) a
 header :: String -> String
 header m = joinWith "\n" [ "module " <> m <> " where"
                          , "import Prelude ((<$>), map, (<*>))"
+                         , "import Control.Monad.Except (withExcept)"
                          , "import Database.Postgres (Client, DB, query, Query(Query), queryOne)"
                          , "import Control.Monad.Aff (Aff)"
                          , "import Data.Maybe (Maybe)"
-                         , "import Data.Foreign (F)"
+                         , "import Data.Foreign (F, ForeignError(..))"
                          , "import Data.Newtype (class Newtype, unwrap)"
                          , "import Database.Postgres.SqlValue (toSql, readSqlProp, fromSql, class IsSqlValue)" ]
 
@@ -213,11 +214,13 @@ genForeign fields nm =
 
 genReadProp :: MatchedOutField -> String
 genReadProp m@(MatchedOutField _ (SQLField {primarykey, notnull, type: t, newtype: nt}) (OuterJoined oj))=
-  parens (readStatement <> " :: F " <> expectedTypeAnnotation)
+  parens (errorHelper <> " " <> parens readStatement)
   where
     nullable = not (primarykey || notnull) || oj
+    errorHelper = "withExcept " <>
+                  parens ( "map " <>
+                           parens ("ErrorAtProperty " <> quotes (getOutFieldName m)))
     readStatement = "readSqlProp " <> quotes (toLower (getOutFieldName m)) <> " obj"
-    expectedTypeAnnotation = if nullable then parens ("Maybe " <> (annotationToPurs t nt)) else annotationToPurs t nt
 
 matchOutVars :: Array SQLTable -> Array Var -> Maybe (List String) -> Exc (Array MatchedOutField)
 matchOutVars ts vars outers = flip traverse vars go

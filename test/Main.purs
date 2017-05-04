@@ -3,6 +3,7 @@ module Test.Main where
 import Control.Apply ((*>))
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (throw)
+import Data.Bifunctor (lmap)
 import Data.Bounded (top, bottom)
 import Data.DateTime (DateTime(DateTime))
 import Data.Either (Either(..), either)
@@ -176,7 +177,16 @@ codegentest = describe "codegen" do
   -- it "should generate an IsSqlValue instance, lowercasing the property names" do
     shouldEqual
       (genForeign f2OutNamedFields "Myfunc2Rec")
-      "instance isSqlValueMyfunc2Rec :: IsSqlValue Myfunc2Rec where \n toSql a = toSql \"\"\n fromSql obj = Myfunc2Rec <$> ({id: _, activityId: _, datePoint: _, anumber: _, description: _} <$> (readSqlProp \"id\" obj :: F PostId) <*> (readSqlProp \"activityid\" obj :: F UUID) <*> (readSqlProp \"datepoint\" obj :: F (Maybe Date)) <*> (readSqlProp \"anumber\" obj :: F Number) <*> (readSqlProp \"description\" obj :: F (Maybe String)))"
+      (joinWith ""
+       ["instance isSqlValueMyfunc2Rec :: IsSqlValue Myfunc2Rec where \n",
+       " toSql a = toSql \"\"\n",
+       " fromSql obj = Myfunc2Rec <$> ", 
+       "({id: _, activityId: _, datePoint: _, anumber: _, description: _} <$> ", 
+       "(withExcept (map (ErrorAtProperty \"id\")) (readSqlProp \"id\" obj)) <*> ",
+       "(withExcept (map (ErrorAtProperty \"activityId\")) (readSqlProp \"activityid\" obj)) <*> ",
+       "(withExcept (map (ErrorAtProperty \"datePoint\")) (readSqlProp \"datepoint\" obj)) <*> ",
+       "(withExcept (map (ErrorAtProperty \"anumber\")) (readSqlProp \"anumber\" obj)) <*> ",
+       "(withExcept (map (ErrorAtProperty \"description\")) (readSqlProp \"description\" obj)))"])
 
 getOutVars :: SQLFunc -> OutParams
 getOutVars (SQLFunc {vars: {out}}) = out

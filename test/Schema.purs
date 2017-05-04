@@ -1,9 +1,10 @@
 module MyApp.SQL where
 import Prelude ((<$>), map, (<*>))
+import Control.Monad.Except (withExcept)
 import Database.Postgres (Client, DB, query, Query(Query), queryOne)
 import Control.Monad.Aff (Aff)
 import Data.Maybe (Maybe)
-import Data.Foreign (F)
+import Data.Foreign (F, ForeignError(..))
 import Data.Newtype (class Newtype, unwrap)
 import Database.Postgres.SqlValue (toSql, readSqlProp, fromSql, class IsSqlValue)
 import Test.SqlTestModel (UUID, MyADT)
@@ -16,7 +17,7 @@ newtype TesttableRec = TesttableRec {id :: UUID, d :: Date, twotz :: DateTime, t
 derive instance newtypeTesttableRec :: Newtype TesttableRec _ 
 instance isSqlValueTesttableRec :: IsSqlValue TesttableRec where 
  toSql a = toSql ""
- fromSql obj = TesttableRec <$> ({id: _, d: _, twotz: _, t: _, mt: _, myadt: _} <$> (readSqlProp "id" obj :: F UUID) <*> (readSqlProp "d" obj :: F Date) <*> (readSqlProp "twotz" obj :: F DateTime) <*> (readSqlProp "t" obj :: F Time) <*> (readSqlProp "mt" obj :: F (Maybe Time)) <*> (readSqlProp "myadt" obj :: F (Maybe MyADT)))
+ fromSql obj = TesttableRec <$> ({id: _, d: _, twotz: _, t: _, mt: _, myadt: _} <$> (withExcept (map (ErrorAtProperty "id")) (readSqlProp "id" obj)) <*> (withExcept (map (ErrorAtProperty "d")) (readSqlProp "d" obj)) <*> (withExcept (map (ErrorAtProperty "twotz")) (readSqlProp "twotz" obj)) <*> (withExcept (map (ErrorAtProperty "t")) (readSqlProp "t" obj)) <*> (withExcept (map (ErrorAtProperty "mt")) (readSqlProp "mt" obj)) <*> (withExcept (map (ErrorAtProperty "myadt")) (readSqlProp "myadt" obj)))
 
 -- CRUD definitions
 getAllTesttable :: forall eff . Client -> Aff (db :: DB | eff) (Array TesttableRec)
@@ -42,5 +43,5 @@ newtype InserttestRec = InserttestRec {id :: UUID}
 derive instance newtypeInserttestRec :: Newtype InserttestRec _ 
 instance isSqlValueInserttestRec :: IsSqlValue InserttestRec where 
  toSql a = toSql ""
- fromSql obj = InserttestRec <$> ({id: _} <$> (readSqlProp "id" obj :: F UUID))
+ fromSql obj = InserttestRec <$> ({id: _} <$> (withExcept (map (ErrorAtProperty "id")) (readSqlProp "id" obj)))
 
